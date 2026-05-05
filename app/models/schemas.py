@@ -59,6 +59,11 @@ class UserCreate(UserBase):
     password: str = Field(min_length=8)
 
 
+class AdminUserCreate(UserCreate):
+    isEmailVerified: bool = True
+    isActive: bool = True
+
+
 class SignupRequest(CamelModel):
     fullName: str = Field(min_length=1, max_length=150)
     email: str = email_field()
@@ -197,5 +202,12 @@ class AuthResponse(CamelModel):
 
 
 class MessageResponse(CamelModel):
+    status: bool
     message: str
     data: dict[str, Any] | None = None
+
+
+class ApiResponse(CamelModel):
+    status: bool
+    message: str
+    data: Any | None = None

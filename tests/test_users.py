@@ -74,23 +74,24 @@ def test_user_management_flow_with_playwright_api(playwright, api_server):
     )
     assert signup.status == 201
     signup_data = signup.json()
-    access_token = signup_data["accessToken"]
-    refresh_token = signup_data["refreshToken"]
-    alice_id = signup_data["user"]["id"]
-    assert signup_data["user"]["profileVisibility"] == "public"
+    assert signup_data["status"] is True
+    access_token = signup_data["data"]["accessToken"]
+    refresh_token = signup_data["data"]["refreshToken"]
+    alice_id = signup_data["data"]["user"]["id"]
+    assert signup_data["data"]["user"]["profileVisibility"] == "public"
 
     verify = request.post("/auth/verify-otp", data={"email": "alice@university.edu", "otp": "123456"})
     assert verify.status == 200
 
     login = request.post("/auth/login", data={"email": "alice@university.edu", "password": "StrongPass123"})
     assert login.status == 200
-    access_token = login.json()["accessToken"]
+    access_token = login.json()["data"]["accessToken"]
 
     me = request.get("/users/me", headers=_auth_headers(access_token))
     assert me.status == 200
-    assert me.json()["isEmailVerified"] is True
+    assert me.json()["data"]["isEmailVerified"] is True
 
-    update = request.put(
+    update = request.patch(
         "/users/me",
         headers=_auth_headers(access_token),
         data={
@@ -106,19 +107,19 @@ def test_user_management_flow_with_playwright_api(playwright, api_server):
         },
     )
     assert update.status == 200
-    updated_user = update.json()
+    updated_user = update.json()["data"]
     assert updated_user["bio"].startswith("Researching")
     assert updated_user["completenessScore"] >= 80
 
     public_profile = request.get(f"/users/{alice_id}")
     assert public_profile.status == 200
-    assert public_profile.json()["connectionsCount"] == 0
+    assert public_profile.json()["data"]["connectionsCount"] == 0
 
     refresh = request.post("/auth/refresh", data={"refreshToken": refresh_token})
     assert refresh.status == 200
 
     admin_signup = request.post(
-        "/auth/signup",
+        "/auth/admin/signup",
         data={
             "fullName": "Admin User",
             "email": "admin@university.edu",
@@ -127,19 +128,41 @@ def test_user_management_flow_with_playwright_api(playwright, api_server):
         },
     )
     assert admin_signup.status == 201
-    admin_token = admin_signup.json()["accessToken"]
-
-    with sqlite3.connect(db_file) as connection:
-        connection.execute("update users set role = 'admin' where email = 'admin@university.edu'")
-        connection.commit()
+    admin_token = admin_signup.json()["data"]["accessToken"]
 
     users = request.get("/users/", headers=_auth_headers(admin_token))
     assert users.status == 200
-    assert any(user["email"] == "alice@university.edu" for user in users.json())
+    assert any(user["email"] == "alice@university.edu" for user in users.json()["data"])
 
     admin_get = request.get(f"/users/admin/{alice_id}", headers=_auth_headers(admin_token))
     assert admin_get.status == 200
-    assert admin_get.json()["email"] == "alice@university.edu"
+    assert admin_get.json()["data"]["email"] == "alice@university.edu"
+
+    admin_create = request.post(
+        "/users/admin",
+        headers=_auth_headers(admin_token),
+        data={
+            "fullName": "Bob Student",
+            "email": "bob@university.edu",
+            "password": "StrongPass123",
+            "role": "user",
+            "consentGiven": True,
+        },
+    )
+    assert admin_create.status == 201
+    bob_id = admin_create.json()["data"]["id"]
+
+    admin_update = request.patch(
+        f"/users/admin/{bob_id}",
+        headers=_auth_headers(admin_token),
+        data={"major": "AI"},
+    )
+    assert admin_update.status == 200
+    assert admin_update.json()["data"]["major"] == "AI"
+
+    admin_delete = request.delete(f"/users/admin/{bob_id}", headers=_auth_headers(admin_token))
+    assert admin_delete.status == 200
+    assert admin_delete.json()["status"] is True
 
     blocked_admin = request.get("/users/", headers=_auth_headers(access_token))
     assert blocked_admin.status == 403
