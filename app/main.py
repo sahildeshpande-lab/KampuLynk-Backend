@@ -298,6 +298,51 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
     return {"accessToken": session.access_token, "refreshToken": session.refresh_token, "user": _user_to_schema(user)}
 
 
+@app.post(
+    "/auth/admin/signup",
+    response_model=AuthResponse,
+    status_code=status.HTTP_201_CREATED,
+    tags=["3] Admin — User Management"],
+)
+def admin_signup(payload: SignupRequest, db: Session = Depends(get_db)):
+    if _get_user_by_email(db, payload.email):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already registered")
+    user = User(
+        full_name=payload.fullName,
+        email=payload.email,
+        password_hash=_hash_password(payload.password),
+        role="admin",
+        login_type="email",
+        university=payload.university,
+        major=payload.major,
+        minor=payload.minor,
+        education_level=payload.educationLevel,
+        invitation_code=payload.invitationCode,
+        consent_given=payload.consentGiven,
+        is_email_verified=True,
+    )
+    user.notification_preferences = UserNotificationPreference(email=True, push=True, in_app=True)
+    user.completeness_score = _calculate_completeness(user)
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    session = _create_session(db, user)
+    return {"accessToken": session.access_token, "refreshToken": session.refresh_token, "user": _user_to_schema(user)}
+
+
+@app.post("/auth/admin/signin", response_model=AuthResponse, tags=["3] Admin — User Management"])
+def admin_signin(payload: LoginRequest, db: Session = Depends(get_db)):
+    user = _get_user_by_email(db, payload.email)
+    if not user or user.password_hash != _hash_password(payload.password):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password")
+    if not user.is_active:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="User is inactive")
+    if user.role != "admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
+    session = _create_session(db, user)
+    return {"accessToken": session.access_token, "refreshToken": session.refresh_token, "user": _user_to_schema(user)}
+
+
 def _oauth_login(payload: OAuthRequest, provider: str, db: Session) -> dict:
     user = _get_user_by_email(db, payload.email)
     if not user:
