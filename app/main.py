@@ -358,14 +358,9 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
     return api_response("Login successful", _auth_payload(session, user))
 
 
-@app.post("/auth/google", response_model=ApiResponse, tags=[AUTH_TAG])
-def google_login(payload: OAuthRequest, db: Session = Depends(get_db)):
-    return _oauth_login(payload, "google", db)
-
-
-@app.post("/auth/apple", response_model=ApiResponse, tags=[AUTH_TAG])
-def apple_login(payload: OAuthRequest, db: Session = Depends(get_db)):
-    return _oauth_login(payload, "apple", db)
+@app.post("/auth/social", response_model=ApiResponse, tags=[AUTH_TAG])
+def social_login(payload: OAuthRequest, db: Session = Depends(get_db)):
+    return _oauth_login(payload, payload.provider, db)
 
 
 def _oauth_login(payload: OAuthRequest, provider: str, db: Session) -> dict:
@@ -487,11 +482,37 @@ def admin_signin(payload: LoginRequest, db: Session = Depends(get_db)):
 def admin_list_users(
     _: User = Depends(get_admin_user),
     db: Session = Depends(get_db),
-    skip: int = 0,
-    limit: int = Query(default=50, le=100),
+    page: int = Query(default=1, ge=1),
+    pageSize: int = Query(default=10, ge=1, le=100),
 ):
-    users = db.query(User).order_by(User.created_at.desc()).offset(skip).limit(limit).all()
-    return api_response("Users fetched", [_user_to_schema(user) for user in users])
+    offset = (page - 1) * pageSize
+    total = db.query(User).count()
+    users = db.query(User).order_by(User.created_at.desc()).offset(offset).limit(pageSize).all()
+    if not users:
+        return api_response(
+            "Data not found",
+            {
+                "items": [],
+                "pagination": {
+                    "page": page,
+                    "pageSize": pageSize,
+                    "totalRecords": total,
+                    "totalPages": (total + pageSize - 1) // pageSize if total else 0,
+                },
+            },
+        )
+    return api_response(
+        "Users fetched",
+        {
+            "items": [_user_to_schema(user) for user in users],
+            "pagination": {
+                "page": page,
+                "pageSize": pageSize,
+                "totalRecords": total,
+                "totalPages": (total + pageSize - 1) // pageSize,
+            },
+        },
+    )
 
 
 @app.post("/users/admin", response_model=ApiResponse, status_code=status.HTTP_201_CREATED, tags=[ADMIN_TAG])

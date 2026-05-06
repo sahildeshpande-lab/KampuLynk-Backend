@@ -82,7 +82,7 @@ curl -X POST "http://127.0.0.1:8000/auth/google" \
     "idToken": "google-id-token",
     "email": "john@university.edu",
     "fullName": "John University",
-    "profilePhotoUrl": "https://storage.example.com/profile.png"
+    "profilePhotoUrl": "https://kampulynk-user-media.s3.amazonaws.com/users/john/profile.png"
   }'
 ```
 
@@ -95,7 +95,7 @@ curl -X POST "http://127.0.0.1:8000/auth/apple" \
     "idToken": "apple-id-token",
     "email": "john@university.edu",
     "fullName": "John University",
-    "profilePhotoUrl": "https://storage.example.com/profile.png"
+    "profilePhotoUrl": "https://kampulynk-user-media.s3.amazonaws.com/users/john/profile.png"
   }'
 ```
 
@@ -133,8 +133,8 @@ curl -X PUT "http://127.0.0.1:8000/users/me" \
   -H "Content-Type: application/json" \
   -d '{
     "fullName": "John University",
-    "profilePhotoUrl": "https://storage.googleapis.com/profile.png",
-    "bannerPhotoUrl": "https://storage.googleapis.com/banner.png",
+    "profilePhotoUrl": "https://kampulynk-user-media.s3.amazonaws.com/users/john/profile.png",
+    "bannerPhotoUrl": "https://kampulynk-user-media.s3.amazonaws.com/users/john/banner.png",
     "university": "MIT",
     "major": "Data science",
     "minor": "AI",
@@ -222,4 +222,3 @@ curl -X GET "http://127.0.0.1:8000/users/?skip=0&limit=50" \
 curl -X GET "http://127.0.0.1:8000/users/admin/USER_ID" \
   -H "Authorization: Bearer ADMIN_ACCESS_TOKEN"
 ```
-

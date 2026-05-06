@@ -1,6 +1,5 @@
 import os
 import socket
-import sqlite3
 import subprocess
 import sys
 import time
@@ -55,8 +54,12 @@ def _auth_headers(access_token):
 
 
 def test_user_management_flow_with_playwright_api(playwright, api_server):
-    base_url, db_file = api_server
+    base_url, _ = api_server
     request = playwright.request.new_context(base_url=base_url)
+
+    root = request.get("/")
+    assert root.status == 200
+    assert root.json()["status"] is True
 
     signup = request.post(
         "/auth/signup",
@@ -82,6 +85,11 @@ def test_user_management_flow_with_playwright_api(playwright, api_server):
 
     verify = request.post("/auth/verify-otp", data={"email": "alice@university.edu", "otp": "123456"})
     assert verify.status == 200
+    assert verify.json()["status"] is True
+
+    resend = request.post("/auth/resend-otp", data={"email": "alice@university.edu"})
+    assert resend.status == 200
+    assert resend.json()["data"]["otp"] == "123456"
 
     login = request.post("/auth/login", data={"email": "alice@university.edu", "password": "StrongPass123"})
     assert login.status == 200
@@ -91,12 +99,16 @@ def test_user_management_flow_with_playwright_api(playwright, api_server):
     assert me.status == 200
     assert me.json()["data"]["isEmailVerified"] is True
 
+    export = request.get("/users/me/export", headers=_auth_headers(access_token))
+    assert export.status == 200
+    assert export.json()["data"]["email"] == "alice@university.edu"
+
     update = request.patch(
         "/users/me",
         headers=_auth_headers(access_token),
         data={
-            "profilePhotoUrl": "https://storage.googleapis.com/profile.png",
-            "bannerPhotoUrl": "https://storage.googleapis.com/banner.png",
+            "profilePhotoUrl": "https://kampulynk-user-media.s3.amazonaws.com/users/alice/profile.png",
+            "bannerPhotoUrl": "https://kampulynk-user-media.s3.amazonaws.com/users/alice/banner.png",
             "bio": "Researching distributed systems and consensus algorithms.",
             "academicInterests": ["distributed systems", "blockchain", "algorithms"],
             "graduationDate": "2027-05",
@@ -117,6 +129,33 @@ def test_user_management_flow_with_playwright_api(playwright, api_server):
 
     refresh = request.post("/auth/refresh", data={"refreshToken": refresh_token})
     assert refresh.status == 200
+    assert refresh.json()["data"]["accessToken"]
+
+    google = request.post(
+        "/auth/social",
+        data={
+            "provider": "google",
+            "idToken": "google-token",
+            "email": "google.user@university.edu",
+            "fullName": "Google User",
+            "profilePhotoUrl": "https://kampulynk-user-media.s3.amazonaws.com/users/google/profile.png",
+        },
+    )
+    assert google.status == 200
+    assert google.json()["data"]["user"]["loginType"] == "google"
+
+    apple = request.post(
+        "/auth/social",
+        data={
+            "provider": "apple",
+            "idToken": "apple-token",
+            "email": "apple.user@university.edu",
+            "fullName": "Apple User",
+            "profilePhotoUrl": "https://kampulynk-user-media.s3.amazonaws.com/users/apple/profile.png",
+        },
+    )
+    assert apple.status == 200
+    assert apple.json()["data"]["user"]["loginType"] == "apple"
 
     admin_signup = request.post(
         "/auth/admin/signup",
@@ -130,9 +169,17 @@ def test_user_management_flow_with_playwright_api(playwright, api_server):
     assert admin_signup.status == 201
     admin_token = admin_signup.json()["data"]["accessToken"]
 
+    admin_signin = request.post(
+        "/auth/admin/signin",
+        data={"email": "admin@university.edu", "password": "StrongPass123"},
+    )
+    assert admin_signin.status == 200
+    assert admin_signin.json()["data"]["user"]["role"] == "admin"
+
     users = request.get("/users/", headers=_auth_headers(admin_token))
     assert users.status == 200
-    assert any(user["email"] == "alice@university.edu" for user in users.json()["data"])
+    assert any(user["email"] == "alice@university.edu" for user in users.json()["data"]["items"])
+    assert users.json()["data"]["pagination"]["pageSize"] == 10
 
     admin_get = request.get(f"/users/admin/{alice_id}", headers=_auth_headers(admin_token))
     assert admin_get.status == 200
@@ -166,6 +213,12 @@ def test_user_management_flow_with_playwright_api(playwright, api_server):
 
     blocked_admin = request.get("/users/", headers=_auth_headers(access_token))
     assert blocked_admin.status == 403
+    assert blocked_admin.json()["status"] is False
+
+    empty_page = request.get("/users/?page=999&pageSize=10", headers=_auth_headers(admin_token))
+    assert empty_page.status == 200
+    assert empty_page.json()["message"] == "Data not found"
+    assert empty_page.json()["data"]["items"] == []
 
     change_password = request.post(
         "/users/me/change-password",
@@ -173,6 +226,25 @@ def test_user_management_flow_with_playwright_api(playwright, api_server):
         data={"currentPassword": "StrongPass123", "newPassword": "EvenStronger123"},
     )
     assert change_password.status == 200
+
+    delete_signup = request.post(
+        "/auth/signup",
+        data={
+            "fullName": "Delete Me",
+            "email": "delete.me@university.edu",
+            "password": "StrongPass123",
+            "consentGiven": True,
+        },
+    )
+    assert delete_signup.status == 201
+    delete_token = delete_signup.json()["data"]["accessToken"]
+
+    delete_me = request.delete("/users/me", headers=_auth_headers(delete_token))
+    assert delete_me.status == 200
+    assert delete_me.json()["message"] == "Current user deleted"
+
+    deleted_me = request.get("/users/me", headers=_auth_headers(delete_token))
+    assert deleted_me.status == 401
 
     logout = request.post("/auth/logout", headers=_auth_headers(access_token))
     assert logout.status == 200

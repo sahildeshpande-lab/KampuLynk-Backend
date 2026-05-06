@@ -5,10 +5,13 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 Role = Literal["user", "admin"]
 LoginType = Literal["email", "google", "apple"]
+SocialProvider = Literal["google", "apple"]
 EducationLevel = Literal["bachelors", "masters", "phd", "postdoctoral", "professional"]
 ProfileVisibility = Literal["public", "connections_only", "private"]
 EMAIL_PATTERN = r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
 EMAIL_EXAMPLE = "john@university.edu"
+PROFILE_PHOTO_EXAMPLE = "https://kampulynk-user-media.s3.amazonaws.com/users/sample/profile.png"
+BANNER_PHOTO_EXAMPLE = "https://kampulynk-user-media.s3.amazonaws.com/users/sample/banner.png"
 
 
 def email_field():
@@ -30,8 +33,8 @@ class UserBase(CamelModel):
     email: str = email_field()
     role: Role = "user"
     loginType: LoginType = "email"
-    profilePhotoUrl: str | None = None
-    bannerPhotoUrl: str | None = None
+    profilePhotoUrl: str | None = Field(default=None, examples=[PROFILE_PHOTO_EXAMPLE])
+    bannerPhotoUrl: str | None = Field(default=None, examples=[BANNER_PHOTO_EXAMPLE])
     university: str | None = None
     major: str | None = None
     minor: str | None = None
@@ -81,10 +84,11 @@ class SignupRequest(CamelModel):
         return value.lower()
 
 class OAuthRequest(CamelModel):
+    provider: SocialProvider = Field(examples=["google"])
     idToken: str = Field(min_length=1)
     email: str = email_field()
     fullName: str | None = None
-    profilePhotoUrl: str | None = None
+    profilePhotoUrl: str | None = Field(default=None, examples=[PROFILE_PHOTO_EXAMPLE])
 
     @field_validator("email")
     @classmethod
@@ -132,8 +136,8 @@ class ChangePasswordRequest(CamelModel):
 
 class UserUpdate(CamelModel):
     fullName: str | None = Field(default=None, min_length=1, max_length=150)
-    profilePhotoUrl: str | None = None
-    bannerPhotoUrl: str | None = None
+    profilePhotoUrl: str | None = Field(default=None, examples=[PROFILE_PHOTO_EXAMPLE])
+    bannerPhotoUrl: str | None = Field(default=None, examples=[BANNER_PHOTO_EXAMPLE])
     university: str | None = None
     major: str | None = None
     minor: str | None = None
@@ -156,8 +160,8 @@ class User(CamelModel):
     email: str = Field(examples=[EMAIL_EXAMPLE])
     role: Role
     loginType: LoginType
-    profilePhotoUrl: str | None
-    bannerPhotoUrl: str | None
+    profilePhotoUrl: str | None = Field(examples=[PROFILE_PHOTO_EXAMPLE])
+    bannerPhotoUrl: str | None = Field(examples=[BANNER_PHOTO_EXAMPLE])
     university: str | None
     major: str | None
     minor: str | None
@@ -184,7 +188,7 @@ class User(CamelModel):
 class PublicUser(CamelModel):
     id: str
     fullName: str
-    profilePhotoUrl: str | None
+    profilePhotoUrl: str | None = Field(examples=[PROFILE_PHOTO_EXAMPLE])
     university: str | None
     major: str | None
     educationLevel: EducationLevel | None
