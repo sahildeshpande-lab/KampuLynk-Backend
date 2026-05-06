@@ -1,18 +1,24 @@
 import hashlib
+import os
 import secrets
+from pathlib import Path
+from datetime import datetime, timedelta, timezone
 from typing import Iterable
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from sqlalchemy import func
 from sqlalchemy.orm import Session
+from starlette.staticfiles import StaticFiles
 
-from .db.db import engine, get_db
+from .db.db import engine, get_db, migrate_legacy_users_table
 from .models.model import (
     Base,
     EmailOTP,
     User,
     UserAcademicInterest,
+    UserNotification,
     UserNotificationPreference,
     UserSession,
 )
@@ -24,16 +30,25 @@ from .models.schemas import (
     OAuthRequest,
     RefreshRequest,
     ResendOTPRequest,
+    SendNotificationRequest,
     SignupRequest,
     UserUpdate,
     VerifyOTPRequest,
 )
+from .services.email_service import (
+    send_account_created_email,
+    send_notification_email,
+    send_otp_email,
+    send_password_changed_email,
+)
 
+migrate_legacy_users_table()
 Base.metadata.create_all(bind=engine)
 
 AUTH_TAG = "1] Authentication"
 USER_TAG = "2] User Management"
-ADMIN_TAG = "3] Admin — User Management"
+NOTIFICATION_TAG = "3] Notifications"
+ADMIN_TAG = "4] Admin — User Management"
 
 app = FastAPI(
     title="KampuLynk User Management API",
@@ -48,11 +63,18 @@ app = FastAPI(
             "description": "Authenticated user profile, password, export, delete, and public profile APIs.",
         },
         {
+            "name": NOTIFICATION_TAG,
+            "description": "Admin notification sending and authenticated user in-app notification APIs.",
+        },
+        {
             "name": ADMIN_TAG,
             "description": "Admin-only authentication and user management APIs.",
         },
     ],
 )
+
+BASE_DIR = Path(__file__).resolve().parent
+app.mount("/static", StaticFiles(directory=BASE_DIR / "templates" / "static"), name="static")
 
 
 @app.exception_handler(HTTPException)
@@ -83,8 +105,12 @@ def _token() -> str:
     return secrets.token_urlsafe(32)
 
 
+def _generate_otp_code() -> str:
+    return f"{secrets.randbelow(1_000_000):06d}"
+
+
 def _create_otp(db: Session, user: User) -> EmailOTP:
-    otp = EmailOTP(user_id=user.id, code="123456")
+    otp = EmailOTP(user_id=user.id, code=_generate_otp_code())
     db.add(otp)
     db.commit()
     db.refresh(otp)
@@ -207,6 +233,21 @@ def _user_to_schema(user: User) -> dict:
     }
 
 
+def _notification_to_schema(notification: UserNotification) -> dict:
+    return {
+        "id": notification.id,
+        "userId": notification.user_id,
+        "templateKey": notification.template_key,
+        "title": notification.title,
+        "body": notification.body,
+        "channels": notification.channels,
+        "deliveryStatus": notification.delivery_status,
+        "isRead": notification.is_read,
+        "createdAt": notification.created_at,
+        "readAt": notification.read_at,
+    }
+
+
 def _public_user(user: User) -> dict:
     if user.profile_visibility == "private":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Profile is private")
@@ -226,7 +267,8 @@ def _public_user(user: User) -> dict:
 
 
 def _get_user_by_email(db: Session, email: str) -> User | None:
-    return db.query(User).filter(User.email == email.lower()).first()
+    normalized_email = email.strip().lower()
+    return db.query(User).filter(func.lower(func.trim(User.email)) == normalized_email).first()
 
 
 def _get_user_or_404(db: Session, user_id: str) -> User:
@@ -302,6 +344,43 @@ def _auth_payload(session: UserSession, user: User) -> dict:
     return {"accessToken": session.access_token, "refreshToken": session.refresh_token, "user": _user_to_schema(user)}
 
 
+def _send_user_notification(db: Session, user: User, payload: SendNotificationRequest) -> UserNotification:
+    preferences = _notification_preferences(user)
+    requested_channels = payload.channels.model_dump()
+    effective_channels = {
+        "email": requested_channels["email"] and preferences["email"],
+        "inApp": requested_channels["inApp"] and preferences["inApp"],
+        "push": requested_channels["push"] and preferences["push"],
+    }
+    delivery_status = {
+        "email": "skipped",
+        "inApp": "created" if effective_channels["inApp"] else "skipped",
+        "push": "queued" if effective_channels["push"] else "skipped",
+    }
+
+    if effective_channels["email"]:
+        sent = send_notification_email(
+            user.email,
+            payload.template.subject,
+            payload.template.title,
+            payload.template.body,
+            payload.template.htmlBody,
+        )
+        delivery_status["email"] = "sent" if sent else "failed"
+
+    notification = UserNotification(
+        user_id=user.id,
+        template_key=payload.template.key,
+        title=payload.template.title,
+        body=payload.template.body,
+        html_body=payload.template.htmlBody,
+        channels=effective_channels,
+        delivery_status=delivery_status,
+    )
+    db.add(notification)
+    return notification
+
+
 @app.get("/", response_model=ApiResponse)
 def read_root():
     return api_response("KampuLynk User Management API is running")
@@ -315,7 +394,8 @@ def signup(payload: SignupRequest, db: Session = Depends(get_db)):
     db.add(user)
     db.commit()
     db.refresh(user)
-    _create_otp(db, user)
+    otp = _create_otp(db, user)
+    send_otp_email(user.email, otp.code)
     session = _create_session(db, user)
     return api_response("Signup successful", _auth_payload(session, user))
 
@@ -332,9 +412,15 @@ def verify_otp(payload: VerifyOTPRequest, db: Session = Depends(get_db)):
     ).order_by(EmailOTP.created_at.desc()).first()
     if not otp:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid OTP")
+    created_at = otp.created_at
+    if created_at.tzinfo is None:
+        created_at = created_at.replace(tzinfo=timezone.utc)
+    if datetime.now(timezone.utc) > created_at + timedelta(minutes=10):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="OTP expired")
     otp.is_used = True
     user.is_email_verified = True
     db.commit()
+    send_account_created_email(user.email, user.full_name)
     return api_response("Email verified", {"email": user.email})
 
 
@@ -344,7 +430,8 @@ def resend_otp(payload: ResendOTPRequest, db: Session = Depends(get_db)):
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     otp = _create_otp(db, user)
-    return api_response("OTP sent", {"email": user.email, "otp": otp.code})
+    send_otp_email(user.email, otp.code)
+    return api_response("OTP sent", {"email": user.email})
 
 
 @app.post("/auth/login", response_model=ApiResponse, tags=[AUTH_TAG])
@@ -428,6 +515,7 @@ def change_password(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid current password")
     current_user.password_hash = _hash_password(payload.newPassword)
     db.commit()
+    send_password_changed_email(current_user.email, current_user.full_name)
     return api_response("Password changed")
 
 
@@ -450,6 +538,95 @@ def get_public_user(userId: str, db: Session = Depends(get_db)):
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     return api_response("Public user fetched", _public_user(user))
+
+
+@app.post("/notifications", response_model=ApiResponse, status_code=status.HTTP_201_CREATED, tags=[NOTIFICATION_TAG])
+def send_notification(
+    payload: SendNotificationRequest,
+    _: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+):
+    unique_user_ids = list(dict.fromkeys(payload.userIds))
+    users = db.query(User).filter(User.id.in_(unique_user_ids), User.is_active.is_(True)).all()
+    found_user_ids = {user.id for user in users}
+    missing_user_ids = [user_id for user_id in unique_user_ids if user_id not in found_user_ids]
+
+    if not users:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No active users found")
+
+    notifications = [_send_user_notification(db, user, payload) for user in users]
+    db.commit()
+    for notification in notifications:
+        db.refresh(notification)
+
+    return api_response(
+        "Notification processed",
+        {
+            "items": [_notification_to_schema(notification) for notification in notifications],
+            "summary": {
+                "requested": len(unique_user_ids),
+                "processed": len(notifications),
+                "missingOrInactiveUserIds": missing_user_ids,
+            },
+        },
+    )
+
+
+@app.get("/notifications/me", response_model=ApiResponse, tags=[NOTIFICATION_TAG])
+def list_my_notifications(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    unreadOnly: bool = Query(default=False),
+    page: int = Query(default=1, ge=1),
+    pageSize: int = Query(default=20, ge=1, le=100),
+):
+    query = db.query(UserNotification).filter(
+        UserNotification.user_id == current_user.id,
+        UserNotification.channels["inApp"].as_boolean().is_(True),
+    )
+    if unreadOnly:
+        query = query.filter(UserNotification.is_read.is_(False))
+
+    total = query.count()
+    notifications = (
+        query.order_by(UserNotification.created_at.desc())
+        .offset((page - 1) * pageSize)
+        .limit(pageSize)
+        .all()
+    )
+
+    return api_response(
+        "Notifications fetched",
+        {
+            "items": [_notification_to_schema(notification) for notification in notifications],
+            "pagination": {
+                "page": page,
+                "pageSize": pageSize,
+                "totalRecords": total,
+                "totalPages": (total + pageSize - 1) // pageSize if total else 0,
+            },
+        },
+    )
+
+
+@app.patch("/notifications/{notificationId}/read", response_model=ApiResponse, tags=[NOTIFICATION_TAG])
+def mark_notification_read(
+    notificationId: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    notification = db.query(UserNotification).filter(
+        UserNotification.id == notificationId,
+        UserNotification.user_id == current_user.id,
+    ).first()
+    if not notification:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Notification not found")
+
+    notification.is_read = True
+    notification.read_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(notification)
+    return api_response("Notification marked as read", _notification_to_schema(notification))
 
 
 @app.post("/auth/admin/signup", response_model=ApiResponse, status_code=status.HTTP_201_CREATED, tags=[ADMIN_TAG])

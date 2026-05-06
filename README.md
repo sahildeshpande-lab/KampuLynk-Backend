@@ -10,6 +10,7 @@ FastAPI backend for student platform user registration, authentication, profile 
 - Session refresh and logout
 - Current user profile APIs
 - Public user profile API
+- Multi-user notification APIs for email, in-app, and queued push delivery
 - Admin user list and admin user detail APIs
 - PostgreSQL database support
 - Swagger UI documentation
@@ -76,7 +77,8 @@ Swagger UI is grouped into:
 
 - `1] Authentication`
 - `2] User Management`
-- `3] Admin — User Management`
+- `3] Notifications`
+- `4] Admin — User Management`
 
 ## Testing
 
@@ -92,10 +94,14 @@ The Playwright API test starts a temporary local API server and uses a temporary
 
 - Swagger testing guide: [README_TEST.md](README_TEST.md)
 - cURL examples: [API_CURL_DOCUMENTATION.md](API_CURL_DOCUMENTATION.md)
+- Notification and OTP email testing: [NOTIFICATION_TESTING.md](NOTIFICATION_TESTING.md)
 
 ## Notes
 
-- Local OTP verification uses `123456`.
+- OTP codes are randomly generated 6-digit numbers.
+- OTP verification expires 10 minutes after generation.
+- `/auth/resend-otp` currently returns the OTP in response data for local/testing use (temporary and security-sensitive).
+- Notification email templates use the KampuLynk navy/crimson brand palette.
+- Push notifications are currently queued in notification delivery status; provider delivery can be connected when device tokens/APNs/FCM are added.
 - Signup creates users with `role: "user"`.
 - Admin APIs require `role: "admin"` in the database.
-

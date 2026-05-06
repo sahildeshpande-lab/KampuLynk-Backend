@@ -55,6 +55,7 @@ class User(Base):
 
     sessions = relationship("UserSession", back_populates="user", cascade="all, delete-orphan")
     otps = relationship("EmailOTP", back_populates="user", cascade="all, delete-orphan")
+    notifications = relationship("UserNotification", back_populates="user", cascade="all, delete-orphan")
     academic_interests = relationship(
         "UserAcademicInterest",
         back_populates="user",
@@ -129,3 +130,21 @@ class EmailOTP(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     user = relationship("User", back_populates="otps")
+
+
+class UserNotification(Base):
+    __tablename__ = "user_notifications"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    template_key = Column(String(80), nullable=True, index=True)
+    title = Column(String(150), nullable=False)
+    body = Column(String(1000), nullable=False)
+    html_body = Column(String, nullable=True)
+    channels = Column(JSON, default=lambda: {"email": False, "inApp": True, "push": False}, nullable=False)
+    delivery_status = Column(JSON, default=dict, nullable=False)
+    is_read = Column(Boolean, default=False, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    read_at = Column(DateTime(timezone=True), nullable=True)
+
+    user = relationship("User", back_populates="notifications")

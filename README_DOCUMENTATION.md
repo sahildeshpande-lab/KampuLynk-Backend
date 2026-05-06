@@ -39,20 +39,24 @@ curl -X POST "http://127.0.0.1:8000/auth/signup" \
   }'
 ```
 
+
+
 ### POST /auth/verify-otp
 
-Local testing OTP is `123456`.
+OTP is sent via email as a random 6-digit code and expires in 10 minutes.
 
 ```bash
 curl -X POST "http://127.0.0.1:8000/auth/verify-otp" \
   -H "Content-Type: application/json" \
   -d '{
     "email": "john@university.edu",
-    "otp": "123456"
+    "otp": "ENTER_OTP_FROM_EMAIL"
   }'
 ```
 
 ### POST /auth/resend-otp
+
+Note: response currently includes OTP in `data.otp` for local/testing use only (temporary).
 
 ```bash
 curl -X POST "http://127.0.0.1:8000/auth/resend-otp" \
@@ -188,7 +192,47 @@ curl -X GET "http://127.0.0.1:8000/users/me/export" \
 curl -X GET "http://127.0.0.1:8000/users/USER_ID"
 ```
 
-## 3] Admin — User Management
+## 3] Notifications
+
+### POST /notifications
+
+Admin-only endpoint for sending the same templated notification to multiple users. It can send email, create in-app notifications, and queue background push notifications for later provider delivery.
+
+```bash
+curl -X POST "http://127.0.0.1:8000/notifications" \
+  -H "Authorization: Bearer ADMIN_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "userIds": ["USER_ID_1", "USER_ID_2"],
+    "template": {
+      "key": "campus-update",
+      "subject": "KampuLynk campus update",
+      "title": "New campus update",
+      "body": "A new campus update is available in your KampuLynk account."
+    },
+    "channels": {
+      "email": true,
+      "inApp": true,
+      "push": true
+    }
+  }'
+```
+
+### GET /notifications/me
+
+```bash
+curl -X GET "http://127.0.0.1:8000/notifications/me?unreadOnly=false&page=1&pageSize=20" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+```
+
+### PATCH /notifications/{notificationId}/read
+
+```bash
+curl -X PATCH "http://127.0.0.1:8000/notifications/NOTIFICATION_ID/read" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+```
+
+## 4] Admin — User Management
 
 Admin APIs require a user with `role = 'admin'`.
 

@@ -4,6 +4,7 @@ import subprocess
 import sys
 import time
 import urllib.request
+import sqlite3
 
 import pytest
 
@@ -54,7 +55,7 @@ def _auth_headers(access_token):
 
 
 def test_user_management_flow_with_playwright_api(playwright, api_server):
-    base_url, _ = api_server
+    base_url, db_file = api_server
     request = playwright.request.new_context(base_url=base_url)
 
     root = request.get("/")
@@ -83,13 +84,51 @@ def test_user_management_flow_with_playwright_api(playwright, api_server):
     alice_id = signup_data["data"]["user"]["id"]
     assert signup_data["data"]["user"]["profileVisibility"] == "public"
 
-    verify = request.post("/auth/verify-otp", data={"email": "alice@university.edu", "otp": "123456"})
+    resend = request.post("/auth/resend-otp", data={"email": "alice@university.edu"})
+    assert resend.status == 200
+    otp_code = resend.json()["data"]["otp"]
+    assert len(otp_code) == 6
+    assert otp_code.isdigit()
+
+    old_fixed_otp = request.post("/auth/verify-otp", data={"email": "alice@university.edu", "otp": "123456"})
+    assert old_fixed_otp.status == 400
+    assert old_fixed_otp.json()["message"] == "Invalid OTP"
+
+    wrong_otp = request.post("/auth/verify-otp", data={"email": "alice@university.edu", "otp": "000000"})
+    assert wrong_otp.status == 400
+    assert wrong_otp.json()["message"] == "Invalid OTP"
+
+    verify = request.post("/auth/verify-otp", data={"email": "alice@university.edu", "otp": otp_code})
     assert verify.status == 200
     assert verify.json()["status"] is True
 
-    resend = request.post("/auth/resend-otp", data={"email": "alice@university.edu"})
-    assert resend.status == 200
-    assert resend.json()["data"]["otp"] == "123456"
+    exp_signup = request.post(
+        "/auth/signup",
+        data={
+            "fullName": "Expired OTP User",
+            "email": "expired@university.edu",
+            "password": "StrongPass123",
+            "consentGiven": True,
+        },
+    )
+    assert exp_signup.status == 201
+
+    exp_resend = request.post("/auth/resend-otp", data={"email": "expired@university.edu"})
+    assert exp_resend.status == 200
+    expired_otp = exp_resend.json()["data"]["otp"]
+    assert len(expired_otp) == 6
+    assert expired_otp.isdigit()
+
+    with sqlite3.connect(str(db_file)) as conn:
+        conn.execute(
+            "UPDATE email_otps SET created_at = datetime(created_at, '-11 minutes') WHERE user_id = (SELECT id FROM users WHERE email = ?)",
+            ("expired@university.edu",),
+        )
+        conn.commit()
+
+    expired_verify = request.post("/auth/verify-otp", data={"email": "expired@university.edu", "otp": expired_otp})
+    assert expired_verify.status == 400
+    assert expired_verify.json()["message"] == "OTP expired"
 
     login = request.post("/auth/login", data={"email": "alice@university.edu", "password": "StrongPass123"})
     assert login.status == 200

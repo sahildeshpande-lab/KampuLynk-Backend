@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 Role = Literal["user", "admin"]
 LoginType = Literal["email", "google", "apple"]
@@ -26,6 +26,26 @@ class NotificationPreferences(CamelModel):
     email: bool = True
     push: bool = True
     inApp: bool = True
+
+
+class NotificationChannels(CamelModel):
+    email: bool = True
+    inApp: bool = True
+    push: bool = False
+
+
+class NotificationTemplate(CamelModel):
+    key: str | None = Field(default=None, max_length=80)
+    subject: str = Field(min_length=1, max_length=150)
+    title: str = Field(min_length=1, max_length=150)
+    body: str = Field(min_length=1, max_length=1000)
+    htmlBody: str | None = None
+
+
+class SendNotificationRequest(CamelModel):
+    userIds: list[str] = Field(min_length=1)
+    template: NotificationTemplate
+    channels: NotificationChannels = Field(default_factory=NotificationChannels)
 
 
 class UserBase(CamelModel):
@@ -133,6 +153,12 @@ class ChangePasswordRequest(CamelModel):
     currentPassword: str = Field(min_length=8)
     newPassword: str = Field(min_length=8)
 
+    @model_validator(mode="after")
+    def passwords_must_differ(self) -> "ChangePasswordRequest":
+        if self.currentPassword == self.newPassword:
+            raise ValueError("New password must be different from current password")
+        return self
+
 
 class UserUpdate(CamelModel):
     fullName: str | None = Field(default=None, min_length=1, max_length=150)
@@ -197,6 +223,19 @@ class PublicUser(CamelModel):
     connectionsCount: int
     completenessScore: int
     profileVisibility: ProfileVisibility
+
+
+class Notification(CamelModel):
+    id: str
+    userId: str
+    templateKey: str | None
+    title: str
+    body: str
+    channels: dict[str, bool]
+    deliveryStatus: dict[str, Any]
+    isRead: bool
+    createdAt: datetime
+    readAt: datetime | None
 
 
 class AuthResponse(CamelModel):

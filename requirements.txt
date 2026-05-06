@@ -7,3 +7,4 @@ pytest-asyncio
 httpx
 playwright
 pytest-playwright
+sendgrid
