@@ -82,13 +82,39 @@ Swagger UI is grouped into:
 
 ## Testing
 
-Run tests:
+The project uses `pytest` for unit and integration testing.
 
+### Prerequisites for Testing
+Ensure you have installed the test dependencies and have the virtual environment activated.
+
+```powershell
+cd backend
+..\myenv\Scripts\pip.exe install -r requirements.txt
+```
+
+### Running Tests
+
+**Run all tests (quiet mode):**
 ```powershell
 ..\myenv\Scripts\python.exe -m pytest tests -q
 ```
 
-The Playwright API test starts a temporary local API server and uses a temporary SQLite database.
+**Run tests with verbose output:**
+```powershell
+..\myenv\Scripts\python.exe -m pytest tests -v
+```
+
+**Run a specific test file:**
+```powershell
+..\myenv\Scripts\python.exe -m pytest tests/test_users.py
+```
+
+**Run tests with coverage report:**
+```powershell
+..\myenv\Scripts\python.exe -m pytest --cov=app tests/
+```
+
+The Playwright API test starts a temporary local API server and uses a temporary SQLite database to ensure a clean testing environment.
 
 ## Documentation
 

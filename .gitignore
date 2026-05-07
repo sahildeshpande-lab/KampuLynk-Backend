@@ -1,36 +1,51 @@
-# Virtual environments
-myenv/
-.venv/
-venv/
-env/
-
-# Python caches
+# Python bytecode / compiled files
 __pycache__/
 *.py[cod]
 *$py.class
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
 
-# Environment files
-.env
-.env.*
-!.env.example
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
 
-# Local databases and logs
-*.db
-*.sqlite
-*.sqlite3
-*.log
-
-# Build artifacts
+# Distribution / packaging
 build/
 dist/
 *.egg-info/
+*.egg
+.eggs/
+*.whl
+pip-wheel-metadata/
+htmlcov/
 
-# OS/editor files
+# Test / coverage
+.coverage
+.coverage.*
+.pytest_cache/
+pytestdebug.log
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.cache
+
+# Environment variables
+.env
+.env.*
+
+# IDE / editor
+.vscode/
+.idea/
+
+# OS files
 .DS_Store
 Thumbs.db
-.idea/
-.vscode/
+Desktop.ini
 
+# Local databases
+*.db
+*.sqlite
+*.sqlite3
