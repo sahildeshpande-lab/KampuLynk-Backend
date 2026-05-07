@@ -109,6 +109,21 @@ def migrate_legacy_users_table():
         for statement in statements:
             connection.execute(text(statement))
 
+        notification_statements = [
+            "alter table user_notifications add column if not exists notification_type varchar(80) not null default 'send'",
+            "alter table user_notifications add column if not exists target_type varchar(30) not null default 'direct'",
+            "alter table user_notifications add column if not exists topic varchar(150)",
+            "create index if not exists ix_user_notifications_notification_type on user_notifications (notification_type)",
+            "create index if not exists ix_user_notifications_target_type on user_notifications (target_type)",
+            "create index if not exists ix_user_notifications_topic on user_notifications (topic)",
+        ]
+        notifications_exists = connection.execute(
+            text("select to_regclass('public.user_notifications') is not null")
+        ).scalar()
+        if notifications_exists:
+            for statement in notification_statements:
+                connection.execute(text(statement))
+
 
 def get_db():
     db = SessionLocal()
