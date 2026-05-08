@@ -62,14 +62,10 @@ def _render_template(template_name: str, context: dict[str, object], raw_keys: s
 
 
 def _render_email_layout(title: str, body_html: str) -> str:
-    # Use BASE_URL from env, default to localhost for development
     base_url = os.getenv("BASE_URL", "http://localhost:8000").rstrip("/")
-    # Ensure logo exists in the expected location
     static_dir = Path(__file__).resolve().parents[1] / "static"
     logo_path = static_dir / "logo.jpg"
-    
-    # Note: If BASE_URL is localhost, images will not render in remote email clients (Gmail, etc.)
-    # For production, BASE_URL should be a public HTTPS URL.
+  
     logo_url = f"{base_url}/static/logo.jpg"
     
     return _render_template(

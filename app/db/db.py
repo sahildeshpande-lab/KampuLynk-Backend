@@ -96,6 +96,7 @@ def migrate_legacy_users_table():
             "alter table users add column if not exists reported_user_ids json not null default '[]'::json",
             "alter table users add column if not exists following_user_ids json not null default '[]'::json",
             "alter table users add column if not exists connection_request_user_ids json not null default '[]'::json",
+            "alter table users add column if not exists connected_user_ids json not null default '[]'::json",
             "alter table users add column if not exists created_at timestamp with time zone not null default now()",
             "alter table users add column if not exists updated_at timestamp with time zone not null default now()",
             "create index if not exists ix_users_id on users (id)",

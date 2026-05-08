@@ -45,6 +45,7 @@ class User(Base):
     reported_user_ids = Column(JSON, default=list, nullable=False)
     following_user_ids = Column(JSON, default=list, nullable=False)
     connection_request_user_ids = Column(JSON, default=list, nullable=False)
+    connected_user_ids = Column(JSON, default=list, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(
         DateTime(timezone=True),

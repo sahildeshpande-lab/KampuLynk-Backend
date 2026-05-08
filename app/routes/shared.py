@@ -155,6 +155,11 @@ def _user_to_schema(user: User) -> dict:
         "connectionsCount": user.connections_count,
         "createdAt": user.created_at,
         "updatedAt": user.updated_at,
+        "connectedUserIds": user.connected_user_ids or [],
+        "followingUserIds": user.following_user_ids or [],
+        "blockedUserIds": user.blocked_user_ids or [],
+        "reportedUserIds": user.reported_user_ids or [],
+        "lynkupRequestUserIds": user.connection_request_user_ids or [],
     }
 
 
@@ -174,6 +179,27 @@ def _public_user(user: User) -> dict:
         "completenessScore": user.completeness_score,
         "profileVisibility": user.profile_visibility,
     }
+
+
+def get_current_user_optional(
+    authorization: str | None = Header(default=None),
+    db: Session = Depends(get_db),
+) -> User | None:
+    if not authorization or not authorization.startswith("Bearer "):
+        return None
+    token = authorization.removeprefix("Bearer ").strip()
+    session = db.query(UserSession).filter(
+        UserSession.access_token == token,
+        UserSession.is_active.is_(True),
+    ).first()
+    if not session or not session.user or not session.user.is_active:
+        return None
+    return session.user
+
+
+def _is_connected(user: User, other_user_id: str) -> bool:
+    connected_ids = user.connected_user_ids or []
+    return other_user_id in connected_ids
 
 
 def _get_user_by_email(db: Session, email: str) -> User | None:
