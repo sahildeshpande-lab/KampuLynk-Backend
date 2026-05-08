@@ -63,9 +63,13 @@ def _render_template(template_name: str, context: dict[str, object], raw_keys: s
 
 def _render_email_layout(title: str, body_html: str) -> str:
     base_url = os.getenv("BASE_URL", "http://localhost:8000").rstrip("/")
+    static_dir = Path(__file__).resolve().parents[1] / "static"
+    logo_path = static_dir / "logo.jpg"
+  
     logo_url = f"{base_url}/static/logo.jpg"
+    
     return _render_template(
-        "base_email.html",
+        "layouts/base_email.html",
         {"title": title, "body_html": body_html, "logo_url": logo_url},
         raw_keys={"body_html"},
     )
@@ -76,14 +80,35 @@ def _paragraphs(text: str) -> str:
 
 
 def build_otp_email_html(otp: str) -> str:
-    body_html = _render_template("otp_email.html", {"otp": otp})
+    body_html = _render_template("auth/otp_email.html", {"otp": otp})
     return _render_email_layout("Email Verification", body_html)
 
 
-def build_notification_email_html(title: str, body: str, html_body: str | None = None) -> str:
+def _notification_template_name(notification_type: str) -> str:
+    match notification_type:
+        case "topic":
+            return "notification_topic_email.html"
+        case "broadcast":
+            return "notification_broadcast_email.html"
+        case "configuration":
+            return "notification_configuration_email.html"
+        case "resend-otp":
+            return "notification_resend_otp_email.html"
+        case _:
+            return "notification_send_email.html"
+
+
+def build_notification_email_html(
+    title: str,
+    body: str,
+    html_body: str | None = None,
+    notification_type: str = "send",
+    template_name: str | None = None,
+) -> str:
     notification_body = html_body if html_body else _paragraphs(body)
+    selected_template = template_name or _notification_template_name(notification_type)
     body_html = _render_template(
-        "notification_email.html",
+        f"notifications/{selected_template}",
         {"notification_body": notification_body},
         raw_keys={"notification_body"},
     )
@@ -92,13 +117,13 @@ def build_notification_email_html(title: str, body: str, html_body: str | None =
 
 def build_account_created_email_html(full_name: str | None = None) -> str:
     greeting = f"Hi {full_name}," if full_name else "Hi,"
-    body_html = _render_template("account_created_email.html", {"greeting": greeting})
+    body_html = _render_template("auth/account_created_email.html", {"greeting": greeting})
     return _render_email_layout("Account Created Successfully", body_html)
 
 
 def build_password_changed_email_html(full_name: str | None = None) -> str:
     greeting = f"Hi {full_name}," if full_name else "Hi,"
-    body_html = _render_template("password_changed_email.html", {"greeting": greeting})
+    body_html = _render_template("auth/password_changed_email.html", {"greeting": greeting})
     return _render_email_layout("Password Changed Successfully", body_html)
 
 
@@ -114,5 +139,17 @@ def send_password_changed_email(to_email: str, full_name: str | None = None) -> 
     return _send_email(to_email, "KampuLynk Password Changed", build_password_changed_email_html(full_name))
 
 
-def send_notification_email(to_email: str, subject: str, title: str, body: str, html_body: str | None = None) -> bool:
-    return _send_email(to_email, subject, build_notification_email_html(title, body, html_body))
+def send_notification_email(
+    to_email: str,
+    subject: str,
+    title: str,
+    body: str,
+    html_body: str | None = None,
+    notification_type: str = "send",
+    template_name: str | None = None,
+) -> bool:
+    return _send_email(
+        to_email,
+        subject,
+        build_notification_email_html(title, body, html_body, notification_type, template_name),
+    )

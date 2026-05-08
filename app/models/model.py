@@ -45,6 +45,7 @@ class User(Base):
     reported_user_ids = Column(JSON, default=list, nullable=False)
     following_user_ids = Column(JSON, default=list, nullable=False)
     connection_request_user_ids = Column(JSON, default=list, nullable=False)
+    connected_user_ids = Column(JSON, default=list, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(
         DateTime(timezone=True),
@@ -137,6 +138,9 @@ class UserNotification(Base):
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    notification_type = Column(String(80), default="send", nullable=False, index=True)
+    target_type = Column(String(30), default="direct", nullable=False, index=True)
+    topic = Column(String(150), nullable=True, index=True)
     template_key = Column(String(80), nullable=True, index=True)
     title = Column(String(150), nullable=False)
     body = Column(String(1000), nullable=False)
@@ -148,3 +152,21 @@ class UserNotification(Base):
     read_at = Column(DateTime(timezone=True), nullable=True)
 
     user = relationship("User", back_populates="notifications")
+
+
+class NotificationType(Base):
+    __tablename__ = "notification_types"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    key = Column(String(80), unique=True, nullable=False, index=True)
+    name = Column(String(150), nullable=False)
+    description = Column(String(500), nullable=True)
+    template_name = Column(String(120), nullable=True)
+    is_active = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )

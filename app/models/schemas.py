@@ -1,13 +1,14 @@
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator, model_validator
 
 Role = Literal["user", "admin"]
 LoginType = Literal["email", "google", "apple"]
 SocialProvider = Literal["google", "apple"]
 EducationLevel = Literal["bachelors", "masters", "phd", "postdoctoral", "professional"]
 ProfileVisibility = Literal["public", "connections_only", "private"]
+NotificationTargetType = Literal["direct", "topic", "broadcast"]
 EMAIL_PATTERN = r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
 EMAIL_EXAMPLE = "john@university.edu"
 PROFILE_PHOTO_EXAMPLE = "https://kampulynk-user-media.s3.amazonaws.com/users/sample/profile.png"
@@ -35,17 +36,40 @@ class NotificationChannels(CamelModel):
 
 
 class NotificationTemplate(CamelModel):
-    key: str | None = Field(default=None, max_length=80)
+    id: str | None = Field(
+        default=None,
+        max_length=80,
+        validation_alias=AliasChoices("id", "key"),
+        serialization_alias="id",
+    )
     subject: str = Field(min_length=1, max_length=150)
     title: str = Field(min_length=1, max_length=150)
     body: str = Field(min_length=1, max_length=1000)
     htmlBody: str | None = None
 
 
+class NotificationTypeCreate(CamelModel):
+    type: str = Field(min_length=1, max_length=80, examples=["send"])
+    name: str = Field(min_length=1, max_length=150, examples=["Send Notification"])
+    description: str | None = Field(default=None, max_length=500)
+    isActive: bool = True
+
+
 class SendNotificationRequest(CamelModel):
-    userIds: list[str] = Field(min_length=1)
+    type: str = Field(default="send", min_length=1, max_length=80, examples=["send"])
+    targetType: NotificationTargetType = "direct"
+    topic: str | None = Field(default=None, max_length=150, examples=["computer-science"])
+    userIds: list[str] = Field(default_factory=list)
     template: NotificationTemplate
     channels: NotificationChannels = Field(default_factory=NotificationChannels)
+
+    @model_validator(mode="after")
+    def validate_target(self) -> "SendNotificationRequest":
+        if self.targetType == "direct" and not self.userIds:
+            raise ValueError("userIds are required for direct notifications")
+        if self.targetType == "topic" and not self.topic:
+            raise ValueError("topic is required for topic notifications")
+        return self
 
 
 class UserBase(CamelModel):
@@ -228,6 +252,9 @@ class PublicUser(CamelModel):
 class Notification(CamelModel):
     id: str
     userId: str
+    type: str
+    targetType: str
+    topic: str | None
     templateKey: str | None
     title: str
     body: str

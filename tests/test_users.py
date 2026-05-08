@@ -60,6 +60,60 @@ def test_get_public_user(client):
     assert response.status_code == 200
     assert response.json()["data"]["fullName"] == "Test User"
 
+
+def test_profile_visibility_connections_only(client, auth_headers):
+    token_a, user_a = _get_token(client, "conn_a@test.com")
+    token_b, user_b = _get_token(client, "conn_b@test.com")
+
+    # Set B profile to connections_only
+    res = client.patch("/users/me", headers=auth_headers(token_b), json={"profileVisibility": "connections_only"})
+    assert res.status_code == 200
+
+    # A should not be able to see B without connection
+    res = client.get(f"/users/{user_b}", headers=auth_headers(token_a))
+    assert res.status_code == 403
+
+    # Connect A <-> B using LynkUp mutual request
+    res = client.post(f"/users/{user_b}/lynkup/request", headers=auth_headers(token_a))
+    assert res.status_code == 200
+    res = client.post(f"/users/{user_a}/lynkup/request", headers=auth_headers(token_b))
+    assert res.status_code == 200
+
+    # A can now see B
+    res = client.get(f"/users/{user_b}", headers=auth_headers(token_a))
+    assert res.status_code == 200
+
+
+def test_follow_block_report_and_lynkup(client, auth_headers):
+    token_a, user_a = _get_token(client, "social_a@test.com")
+    token_b, user_b = _get_token(client, "social_b@test.com")
+
+    # Follow/unfollow
+    res = client.post(f"/users/{user_b}/follow", headers=auth_headers(token_a))
+    assert res.status_code == 200
+    res = client.delete(f"/users/{user_b}/follow", headers=auth_headers(token_a))
+    assert res.status_code == 200
+
+    # Report
+    res = client.post(f"/users/{user_b}/report", headers=auth_headers(token_a))
+    assert res.status_code == 200
+
+    # LynkUp connect via accept
+    res = client.post(f"/users/{user_b}/lynkup/request", headers=auth_headers(token_a))
+    assert res.status_code == 200
+    res = client.post(f"/users/{user_a}/lynkup/accept", headers=auth_headers(token_b))
+    assert res.status_code == 200
+
+    # Remove connection
+    res = client.delete(f"/users/{user_b}/lynkup", headers=auth_headers(token_a))
+    assert res.status_code == 200
+
+    # Block/unblock
+    res = client.post(f"/users/{user_b}/block", headers=auth_headers(token_a))
+    assert res.status_code == 200
+    res = client.delete(f"/users/{user_b}/block", headers=auth_headers(token_a))
+    assert res.status_code == 200
+
 def test_admin_list_users(client, auth_headers):
     admin_token, _ = _get_token(client, "adminlist@test.com", role="admin")
     _get_token(client, "user1@test.com")
