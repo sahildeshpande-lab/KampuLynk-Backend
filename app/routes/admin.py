@@ -3,12 +3,15 @@ from sqlalchemy.orm import Session
 
 from ..db.db import get_db
 from ..models.model import User, UserSession
-from ..models.schemas import AdminUserCreate, ApiResponse, UserUpdate
+from ..models.schemas import AdminUserCreate, ApiResponse, LoginRequest, SignupRequest, UserUpdate
 from .shared import (
     _apply_user_update,
+    _auth_payload,
     _create_user_from_payload,
+    _create_session,
     _get_user_by_email,
     _get_user_or_404,
+    _hash_password,
     _user_to_schema,
     api_response,
     get_admin_user,
@@ -17,6 +20,32 @@ from .shared import (
 ADMIN_TAG = "4] Admin User Management"
 
 router = APIRouter(tags=[ADMIN_TAG])
+
+
+@router.post("/auth/admin/signup", response_model=ApiResponse, status_code=status.HTTP_201_CREATED)
+def admin_signup(payload: SignupRequest, db: Session = Depends(get_db)):
+    if _get_user_by_email(db, payload.email):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already registered")
+    user = _create_user_from_payload(payload, role="admin")
+    user.is_email_verified = True
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    session = _create_session(db, user)
+    return api_response("Admin signup successful", _auth_payload(session, user))
+
+
+@router.post("/auth/admin/signin", response_model=ApiResponse)
+def admin_signin(payload: LoginRequest, db: Session = Depends(get_db)):
+    user = _get_user_by_email(db, payload.email)
+    if not user or user.password_hash != _hash_password(payload.password):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password")
+    if not user.is_active:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="User is inactive")
+    if user.role != "admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
+    session = _create_session(db, user)
+    return api_response("Admin signin successful", _auth_payload(session, user))
 
 
 @router.get("/users/", response_model=ApiResponse)

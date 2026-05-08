@@ -329,63 +329,6 @@ curl -X POST "http://127.0.0.1:8000/auth/logout" \
 { "status": false, "message": "Missing bearer token", "data": null }
 ```
 
-### POST /auth/admin/signup
-
-**Endpoint:** `POST /auth/admin/signup`
-
-**Request:** same schema as `/auth/signup`
-
-**cURL:**
-```bash
-curl -X POST "http://127.0.0.1:8000/auth/admin/signup" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "fullName": "Admin",
-    "email": "admin@university.edu",
-    "password": "StrongPass123",
-    "consentGiven": true,
-    "university": "MIT",
-    "major": "CS",
-    "educationLevel": "bachelors"
-  }'
-```
-
-**Successful Response (201):**
-```json
-{ "status": true, "message": "Admin signup successful", "data": { "accessToken": "...", "refreshToken": "...", "user": { "...": "..." } } }
-```
-
-**Unsuccessful Response (409 - Email already registered):**
-```json
-{ "status": false, "message": "Email already registered", "data": null }
-```
-
-### POST /auth/admin/signin
-
-**Endpoint:** `POST /auth/admin/signin`
-
-**Request:**
-```json
-{ "email": "admin@university.edu", "password": "StrongPass123" }
-```
-
-**cURL:**
-```bash
-curl -X POST "http://127.0.0.1:8000/auth/admin/signin" \
-  -H "Content-Type: application/json" \
-  -d '{ "email": "admin@university.edu", "password": "StrongPass123" }'
-```
-
-**Successful Response (200):**
-```json
-{ "status": true, "message": "Admin signin successful", "data": { "accessToken": "...", "refreshToken": "...", "user": { "...": "..." } } }
-```
-
-**Unsuccessful Response (403 - Admin access required):**
-```json
-{ "status": false, "message": "Admin access required", "data": null }
-```
-
 ## 2] User Management
 
 ### GET /users/me
@@ -898,9 +841,66 @@ curl -X PATCH "http://127.0.0.1:8000/notifications/NOTIFICATION_ID/read" \
 { "status": false, "message": "Notification not found", "data": null }
 ```
 
-## 4] Admin — User Management
+## 4] Admin - User Management
 
 Admin APIs require a user with `role = "admin"`.
+
+### POST /auth/admin/signup
+
+**Endpoint:** `POST /auth/admin/signup`
+
+**Request:** same schema as `/auth/signup`
+
+**cURL:**
+```bash
+curl -X POST "http://127.0.0.1:8000/auth/admin/signup" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "fullName": "Admin",
+    "email": "admin@university.edu",
+    "password": "StrongPass123",
+    "consentGiven": true,
+    "university": "MIT",
+    "major": "CS",
+    "educationLevel": "bachelors"
+  }'
+```
+
+**Successful Response (201):**
+```json
+{ "status": true, "message": "Admin signup successful", "data": { "accessToken": "...", "refreshToken": "...", "user": { "...": "..." } } }
+```
+
+**Unsuccessful Response (409 - Email already registered):**
+```json
+{ "status": false, "message": "Email already registered", "data": null }
+```
+
+### POST /auth/admin/signin
+
+**Endpoint:** `POST /auth/admin/signin`
+
+**Request:**
+```json
+{ "email": "admin@university.edu", "password": "StrongPass123" }
+```
+
+**cURL:**
+```bash
+curl -X POST "http://127.0.0.1:8000/auth/admin/signin" \
+  -H "Content-Type: application/json" \
+  -d '{ "email": "admin@university.edu", "password": "StrongPass123" }'
+```
+
+**Successful Response (200):**
+```json
+{ "status": true, "message": "Admin signin successful", "data": { "accessToken": "...", "refreshToken": "...", "user": { "...": "..." } } }
+```
+
+**Unsuccessful Response (403 - Admin access required):**
+```json
+{ "status": false, "message": "Admin access required", "data": null }
+```
 
 ### GET /users/
 

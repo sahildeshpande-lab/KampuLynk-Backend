@@ -19,7 +19,6 @@ from .shared import (
 )
 
 AUTH_TAG = "1] Authentication"
-ADMIN_TAG = "4] Admin User Management"
 
 router = APIRouter(tags=[AUTH_TAG])
 
@@ -188,28 +187,3 @@ def logout(session: UserSession = Depends(_current_session), db: Session = Depen
     db.commit()
     return api_response("Logged out")
 
-
-@router.post("/auth/admin/signup", response_model=ApiResponse, status_code=status.HTTP_201_CREATED, tags=[ADMIN_TAG])
-def admin_signup(payload: SignupRequest, db: Session = Depends(get_db)):
-    if _get_user_by_email(db, payload.email):
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already registered")
-    user = _create_user_from_payload(payload, role="admin")
-    user.is_email_verified = True
-    db.add(user)
-    db.commit()
-    db.refresh(user)
-    session = _create_session(db, user)
-    return api_response("Admin signup successful", _auth_payload(session, user))
-
-
-@router.post("/auth/admin/signin", response_model=ApiResponse, tags=[ADMIN_TAG])
-def admin_signin(payload: LoginRequest, db: Session = Depends(get_db)):
-    user = _get_user_by_email(db, payload.email)
-    if not user or user.password_hash != _hash_password(payload.password):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password")
-    if not user.is_active:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="User is inactive")
-    if user.role != "admin":
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
-    session = _create_session(db, user)
-    return api_response("Admin signin successful", _auth_payload(session, user))
