@@ -207,7 +207,8 @@ def _user_to_schema(user: User) -> dict:
         "connectionsCount": user.connections_count,
         "createdAt": user.created_at,
         "updatedAt": user.updated_at,
-        "onboardingRequired": bool((user.completeness_score or 0) < 70),
+        # True => onboarding required (email verification pending), False => not required
+        "is_onboarding": not user.is_email_verified,
         "connectedUserIds": user.connected_user_ids or [],
         "followingUserIds": user.following_user_ids or [],
         "blockedUserIds": user.blocked_user_ids or [],
@@ -343,7 +344,12 @@ def _auth_payload(session: UserSession, user: User) -> dict:
             "exp": now + (ttl_minutes * 60),
         }
     )
-    return {"accessToken": access_token, "refreshToken": session.refresh_token, "user": _user_to_schema(user)}
+    return {
+        "accessToken": access_token,
+        "refreshToken": session.refresh_token,
+        "is_onboarding": not user.is_email_verified,
+        "user": _user_to_schema(user),
+    }
 
 
 def _otp_not_expired(otp: EmailOTP) -> bool:

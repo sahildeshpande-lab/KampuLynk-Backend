@@ -261,7 +261,7 @@ class User(CamelModel):
     connectionsCount: int
     createdAt: datetime
     updatedAt: datetime
-    onboardingRequired: bool = True
+    isOnboarding: int = 1
 
 
 class PublicUser(CamelModel):
