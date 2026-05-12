@@ -143,7 +143,7 @@ def test_admin_signup(client):
     }
     response = client.post("/auth/admin/signup", json=payload)
     assert response.status_code == 201
-    assert response.json()["data"]["user"]["role"] == "admin"
+    assert response.json()["data"]["user"]["role"] == "superadmin"
 
 def test_admin_signin(client):
     email = "admin.signin@university.edu"
@@ -160,4 +160,4 @@ def test_admin_signin(client):
     
     response = client.post("/auth/admin/signin", json={"email": email, "password": password})
     assert response.status_code == 200
-    assert response.json()["data"]["user"]["role"] == "admin"
+    assert response.json()["data"]["user"]["role"] == "superadmin"

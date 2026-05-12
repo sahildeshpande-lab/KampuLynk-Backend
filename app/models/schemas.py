@@ -3,7 +3,7 @@ from typing import Any, Literal
 
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator, model_validator
 
-Role = Literal["user", "admin"]
+Role = Literal["user", "superadmin", "moderator", "viewer"]
 LoginType = Literal["email", "google", "apple"]
 SocialProvider = Literal["google", "apple"]
 EducationLevel = Literal["bachelors", "masters", "phd", "postdoctoral", "professional"]
@@ -87,12 +87,13 @@ class UserBase(CamelModel):
     academicInterests: list[str] = Field(default_factory=list)
     graduationDate: str | None = Field(default=None, pattern=r"^\d{4}-\d{2}$")
     location: str | None = None
-    profileVisibility: ProfileVisibility = "public"
+    profileVisibility: ProfileVisibility = "private"
     completenessScore: int = Field(default=0, ge=0, le=100)
     notificationPreferences: NotificationPreferences = Field(default_factory=NotificationPreferences)
     isEmailVerified: bool = False
     isActive: bool = True
     consentGiven: bool = False
+    referenceCode: str | None = None
     invitationCode: str | None = None
     onlinePresence: bool = False
     welcomeMessage: str | None = None
@@ -173,6 +174,26 @@ class RefreshRequest(CamelModel):
     refreshToken: str
 
 
+class ForgotPasswordRequest(CamelModel):
+    email: str = email_field()
+
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, value: str) -> str:
+        return value.lower()
+
+
+class ResetPasswordRequest(CamelModel):
+    email: str = email_field()
+    otp: str = Field(min_length=4, max_length=12)
+    newPassword: str = Field(min_length=8)
+
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, value: str) -> str:
+        return value.lower()
+
+
 class ChangePasswordRequest(CamelModel):
     currentPassword: str = Field(min_length=8)
     newPassword: str = Field(min_length=8)
@@ -199,9 +220,13 @@ class UserUpdate(CamelModel):
     profileVisibility: ProfileVisibility | None = None
     notificationPreferences: NotificationPreferences | None = None
     consentGiven: bool | None = None
-    invitationCode: str | None = None
+    referenceCode: str | None = None
     onlinePresence: bool | None = None
     welcomeMessage: str | None = None
+
+
+class ProfileVisibilityUpdate(CamelModel):
+    profileVisibility: ProfileVisibility
 
 
 class User(CamelModel):
@@ -226,13 +251,17 @@ class User(CamelModel):
     isEmailVerified: bool
     isActive: bool
     consentGiven: bool
+    referenceCode: str | None
     invitationCode: str | None
+    invitationDeepLinkUrl: str | None = None
+    invitationWebUrl: str | None = None
     onlinePresence: bool
     welcomeMessage: str | None
     postsCount: int
     connectionsCount: int
     createdAt: datetime
     updatedAt: datetime
+    onboardingRequired: bool = True
 
 
 class PublicUser(CamelModel):
@@ -281,3 +310,47 @@ class ApiResponse(CamelModel):
     status: bool
     message: str
     data: Any | None = None
+
+
+class InvitationSendRequest(CamelModel):
+    email: str = email_field()
+
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, value: str) -> str:
+        return value.lower()
+
+
+class InvitationSendResult(CamelModel):
+    code: str
+    deepLinkUrl: str | None = None
+    webUrl: str | None = None
+    remainingToday: int
+    limitPerDay: int = 50
+
+
+class InvitationValidateResult(CamelModel):
+    isValid: bool
+    code: str
+    originatorUserId: str | None = None
+    originatorName: str | None = None
+
+
+class InvitationCodeAdminItem(CamelModel):
+    id: str
+    code: str
+    originatorUserId: str
+    originatorEmail: str | None = None
+    isActive: bool
+    createdAt: datetime
+    deactivatedAt: datetime | None = None
+    deactivatedByUserId: str | None = None
+    deactivationReason: str | None = None
+
+
+class InvitationCodeDeactivateRequest(CamelModel):
+    reason: str | None = Field(default=None, max_length=255)
+
+
+class AdminInvitationCodeCreateRequest(CamelModel):
+    originatorUserId: str = Field(min_length=1)

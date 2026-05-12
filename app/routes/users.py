@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 
 from ..db.db import get_db
 from ..models.model import User, UserSession
-from ..models.schemas import ApiResponse, ChangePasswordRequest, UserUpdate
+from ..models.schemas import ApiResponse, ChangePasswordRequest, ProfileVisibilityUpdate, UserUpdate
 from .shared import (
     _apply_user_update,
     _hash_password,
@@ -36,6 +36,18 @@ def update_me(payload: UserUpdate, current_user: User = Depends(get_current_user
     db.commit()
     db.refresh(current_user)
     return api_response("Current user updated", _user_to_schema(current_user))
+
+
+@router.patch("/users/me/visibility", response_model=ApiResponse)
+def update_visibility(
+    payload: ProfileVisibilityUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    current_user.profile_visibility = payload.profileVisibility
+    db.commit()
+    db.refresh(current_user)
+    return api_response("Profile visibility updated", {"profileVisibility": current_user.profile_visibility})
 
 
 @router.post("/users/me/change-password", response_model=ApiResponse)

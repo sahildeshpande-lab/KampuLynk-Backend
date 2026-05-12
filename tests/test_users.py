@@ -54,8 +54,11 @@ def test_export_me(client, auth_headers):
     assert response.status_code == 200
     assert response.json()["data"]["email"] == "exportme@test.com"
 
-def test_get_public_user(client):
-    _, user_id = _get_token(client, "public@test.com")
+def test_get_public_user(client, auth_headers):
+    token, user_id = _get_token(client, "public@test.com")
+    # default is private now; make it public for this test
+    res = client.patch("/users/me/visibility", headers=auth_headers(token), json={"profileVisibility": "public"})
+    assert res.status_code == 200
     response = client.get(f"/users/{user_id}")
     assert response.status_code == 200
     assert response.json()["data"]["fullName"] == "Test User"
