@@ -25,7 +25,7 @@ class User(Base):
     legacy_academic_interests = Column("academic_interests", JSON, default=list, nullable=False)
     graduation_date = Column(String(7), nullable=True)
     location = Column(String(255), nullable=True)
-    profile_visibility = Column(String(30), default="public", nullable=False)
+    profile_visibility = Column(String(30), default="private", nullable=False)
     completeness_score = Column(Integer, default=0, nullable=False)
     legacy_notification_preferences = Column(
         "notification_preferences",
@@ -36,7 +36,8 @@ class User(Base):
     is_email_verified = Column(Boolean, default=False, nullable=False)
     is_active = Column(Boolean, default=True, nullable=False)
     consent_given = Column(Boolean, default=False, nullable=False)
-    invitation_code = Column(String(100), nullable=True)
+    reference_code = Column(String(32), nullable=True, index=True)
+    invitation_code = Column(String(32), nullable=True, index=True)
     online_presence = Column(Boolean, default=False, nullable=False)
     welcome_message = Column(String(255), nullable=True)
     connections_count = Column(Integer, default=0, nullable=False)
@@ -68,6 +69,18 @@ class User(Base):
         back_populates="user",
         cascade="all, delete-orphan",
         uselist=False,
+    )
+    invitation_codes = relationship(
+        "InvitationCode",
+        back_populates="originator",
+        foreign_keys="InvitationCode.originator_user_id",
+        cascade="all, delete-orphan",
+    )
+    sent_invitations = relationship(
+        "Invitation",
+        back_populates="originator",
+        foreign_keys="Invitation.originator_user_id",
+        cascade="all, delete-orphan",
     )
 
 
@@ -120,6 +133,17 @@ class UserSession(Base):
     user = relationship("User", back_populates="sessions")
 
 
+class LoginRateLimit(Base):
+    __tablename__ = "login_rate_limits"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    email = Column(String(255), nullable=False, index=True)
+    ip = Column(String(64), nullable=True, index=True)
+    failed_count = Column(Integer, default=0, nullable=False)
+    first_failed_at = Column(DateTime(timezone=True), nullable=True)
+    blocked_until = Column(DateTime(timezone=True), nullable=True)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
 class EmailOTP(Base):
     __tablename__ = "email_otps"
 
@@ -170,3 +194,54 @@ class NotificationType(Base):
         onupdate=func.now(),
         nullable=False,
     )
+
+
+class InvitationCode(Base):
+    __tablename__ = "invitation_codes"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    code = Column(String(32), unique=True, nullable=False, index=True)
+    originator_user_id = Column(
+        String(36),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    is_active = Column(Boolean, default=True, nullable=False, index=True)
+    deactivated_at = Column(DateTime(timezone=True), nullable=True)
+    deactivated_by_user_id = Column(String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    deactivation_reason = Column(String(255), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    originator = relationship("User", back_populates="invitation_codes", foreign_keys=[originator_user_id])
+    deactivated_by = relationship("User", foreign_keys=[deactivated_by_user_id])
+    invitations = relationship("Invitation", back_populates="invitation_code", cascade="all, delete-orphan")
+
+
+class Invitation(Base):
+    __tablename__ = "invitations"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    invitation_code_id = Column(
+        String(36),
+        ForeignKey("invitation_codes.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    originator_user_id = Column(
+        String(36),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    invited_email = Column(String(255), nullable=False, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    invitation_code = relationship("InvitationCode", back_populates="invitations")
+    originator = relationship("User", back_populates="sent_invitations", foreign_keys=[originator_user_id])

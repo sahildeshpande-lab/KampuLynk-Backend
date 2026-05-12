@@ -11,6 +11,8 @@ from .models.model import Base
 from .routes.admin import router as admin_router
 from .routes.auth import router as auth_router
 from .routes.notifications import router as notification_router
+from .routes.invitations import router as invitation_router
+from .routes.discovery import router as discovery_router
 from .routes.users import router as user_router
 from .services.email_service import (
     send_account_created_email,
@@ -26,6 +28,8 @@ AUTH_TAG = "1] Authentication"
 USER_TAG = "2] User Management"
 NOTIFICATION_TAG = "3] Notifications"
 ADMIN_TAG = "4] Admin User Management"
+INVITATION_TAG = "5] Invitations"
+DISCOVERY_TAG = "6] Search & Discovery"
 
 app = FastAPI(
     title="KampuLynk User Management API",
@@ -47,6 +51,14 @@ app = FastAPI(
             "name": ADMIN_TAG,
             "description": "Admin-only authentication and user management APIs.",
         },
+        {
+            "name": INVITATION_TAG,
+            "description": "Invitation code validation, deep links, and invitation sending.",
+        },
+        {
+            "name": DISCOVERY_TAG,
+            "description": "Search & discovery APIs (search by name/keyword/hashtag, filter by university/interest, etc.).",
+        },
     ],
 )
 
@@ -57,6 +69,8 @@ app.include_router(auth_router)
 app.include_router(user_router)
 app.include_router(admin_router)
 app.include_router(notification_router)
+app.include_router(invitation_router)
+app.include_router(discovery_router)
 
 
 @app.get("/")

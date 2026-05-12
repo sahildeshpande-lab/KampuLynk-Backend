@@ -87,27 +87,50 @@ curl -X POST "http://127.0.0.1:8000/auth/signup" \
   }'
 ```
 
-**Successful Response (201):**
-```json
-{
-  "status": true,
-  "message": "Signup successful",
-  "data": {
-    "accessToken": "...",
-    "refreshToken": "...",
-    "user": { "...": "..." }
-  }
-}
+## 5] Invitations
+
+### GET /invitations/code
+
+Fetches the active invitation code for the logged-in user (creates one if missing).
+
+**Endpoint:** `GET /invitations/code`
+
+**cURL:**
+```bash
+curl -X GET "http://127.0.0.1:8000/invitations/code" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
 ```
 
-**Unsuccessful Response (409 - Email already registered):**
+### POST /invitations/send
+
+Creates an invitation (enforces daily limit + 7-day email cooldown) and returns the embedded-code URLs.
+
+**Endpoint:** `POST /invitations/send`
+
+**Request:**
 ```json
-{
-  "status": false,
-  "message": "Email already registered",
-  "data": null
-}
+{ "email": "invitee@university.edu" }
 ```
+
+## 4] Admin - Invitation Management
+
+### GET /admin/invitation-codes
+
+View invitation code list with pagination and optional `activeOnly=true`.
+
+**Endpoint:** `GET /admin/invitation-codes?page=1&pageSize=10&activeOnly=false`
+
+### GET /admin/invitation-codes/{codeId}
+
+Access details of an invitation code including originator details.
+
+**Endpoint:** `GET /admin/invitation-codes/{codeId}`
+
+### PATCH /admin/invitation-codes/{codeId}/deactivate
+
+Deactivate an invitation code.
+
+**Endpoint:** `PATCH /admin/invitation-codes/{codeId}/deactivate`
 
 ### POST /auth/verify-otp
 
@@ -482,6 +505,57 @@ curl -X GET "http://127.0.0.1:8000/users/USER_ID" \
 ```json
 { "status": false, "message": "User not found", "data": null }
 ```
+
+## 6] Search & Discovery
+
+### GET /discovery/users/search
+
+Search public user profiles (text/hashtag).
+
+**Endpoint:** `GET /discovery/users/search`
+
+**Query params (optional):**
+- `q`: keyword search across name/email/university/major/minor/bio/interests
+- `hashtag`: repeatable or CSV (e.g. `hashtag=%23AI` or `hashtag=#AI,#Robotics`)
+- `limit` (default 20, max 50), `offset` (default 0)
+
+**cURL (keyword search):**
+```bash
+curl -X GET "http://127.0.0.1:8000/discovery/users/search?q=MIT&limit=20&offset=0"
+```
+
+**cURL (hashtag search):**
+```bash
+curl -X GET "http://127.0.0.1:8000/discovery/users/search?hashtag=%23AI"
+```
+
+### GET /discovery/users/filter
+
+Filter public user profiles (structured filters).
+
+**Endpoint:** `GET /discovery/users/filter`
+
+**Query params (optional):**
+- `university`, `major`, `minor`, `educationLevel`
+- `interest`: repeatable or CSV (matches academic interests)
+- `country`: matched against `location` text
+- `limit` (default 20, max 50), `offset` (default 0)
+
+**cURL (filters):**
+```bash
+curl -X GET "http://127.0.0.1:8000/discovery/users/filter?university=Stanford&interest=Genetics&country=USA"
+```
+
+## Demo Data (Local)
+
+Seed 10 users + 5 admins into your configured database:
+
+```powershell
+cd backend
+..\myenv\Scripts\python.exe scripts\seed_demo_data.py
+```
+
+Note: This seeder also adds a couple of `private` profiles (they will not appear in `/discovery/users/search` or `/discovery/users/filter`).
 
 **Unsuccessful Response (403 - Private / connections only):**
 ```json

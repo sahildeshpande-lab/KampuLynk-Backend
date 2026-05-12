@@ -1,5 +1,10 @@
 import hashlib
+import hmac
+import json
+import os
 import secrets
+import time
+from base64 import urlsafe_b64decode, urlsafe_b64encode
 from datetime import datetime, timedelta, timezone
 from typing import Iterable
 
@@ -16,6 +21,7 @@ from ..models.model import (
     UserSession,
 )
 from ..models.schemas import AdminUserCreate, SignupRequest, UserUpdate
+from ..services import invitation_service
 
 
 def api_response(message: str, data=None, ok: bool = True) -> dict:
@@ -29,6 +35,48 @@ def _hash_password(password: str) -> str:
 def _token() -> str:
     return secrets.token_urlsafe(32)
 
+
+def _base64url_encode(raw: bytes) -> str:
+    return urlsafe_b64encode(raw).rstrip(b"=").decode("ascii")
+
+
+def _base64url_decode(data: str) -> bytes:
+    padding = "=" * (-len(data) % 4)
+    return urlsafe_b64decode((data + padding).encode("ascii"))
+
+
+def _jwt_secret() -> bytes:
+    value = os.getenv("JWT_SECRET") or os.getenv("SECRET_KEY") or "dev-secret"
+    return value.encode("utf-8")
+
+
+def _jwt_encode(payload: dict) -> str:
+    header = {"alg": "HS256", "typ": "JWT"}
+    header_b64 = _base64url_encode(json.dumps(header, separators=(",", ":"), sort_keys=True).encode("utf-8"))
+    payload_b64 = _base64url_encode(json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8"))
+    signing_input = f"{header_b64}.{payload_b64}".encode("ascii")
+    signature = hmac.new(_jwt_secret(), signing_input, hashlib.sha256).digest()
+    sig_b64 = _base64url_encode(signature)
+    return f"{header_b64}.{payload_b64}.{sig_b64}"
+
+
+def _jwt_decode(token: str) -> dict:
+    try:
+        header_b64, payload_b64, sig_b64 = token.split(".", 2)
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+
+    signing_input = f"{header_b64}.{payload_b64}".encode("ascii")
+    expected_sig = hmac.new(_jwt_secret(), signing_input, hashlib.sha256).digest()
+    actual_sig = _base64url_decode(sig_b64)
+    if not hmac.compare_digest(expected_sig, actual_sig):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+
+    payload = json.loads(_base64url_decode(payload_b64))
+    exp = payload.get("exp")
+    if exp is not None and int(exp) < int(time.time()):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token expired")
+    return payload
 
 def _generate_otp_code() -> str:
     return f"{secrets.randbelow(1_000_000):06d}"
@@ -70,9 +118,9 @@ def _create_user_from_payload(payload: SignupRequest | AdminUserCreate, role: st
         bio=getattr(payload, "bio", None),
         graduation_date=getattr(payload, "graduationDate", None),
         location=getattr(payload, "location", None),
-        profile_visibility=getattr(payload, "profileVisibility", "public"),
+        profile_visibility=getattr(payload, "profileVisibility", "private"),
         consent_given=payload.consentGiven,
-        invitation_code=payload.invitationCode,
+        reference_code=payload.invitationCode,
         online_presence=getattr(payload, "onlinePresence", False),
         welcome_message=getattr(payload, "welcomeMessage", None),
         is_email_verified=getattr(payload, "isEmailVerified", False),
@@ -126,6 +174,7 @@ def _notification_preferences(user: User) -> dict[str, bool]:
 
 
 def _user_to_schema(user: User) -> dict:
+    invite_code = (user.invitation_code or "").strip().upper() or None
     return {
         "id": user.id,
         "fullName": user.full_name,
@@ -148,13 +197,17 @@ def _user_to_schema(user: User) -> dict:
         "isEmailVerified": user.is_email_verified,
         "isActive": user.is_active,
         "consentGiven": user.consent_given,
-        "invitationCode": user.invitation_code,
+        "referenceCode": user.reference_code,
+        "invitationCode": invite_code,
+        "invitationDeepLinkUrl": invitation_service.invitation_deep_link_url(invite_code) if invite_code else None,
+        "invitationWebUrl": invitation_service.invitation_web_url(invite_code) if invite_code else None,
         "onlinePresence": user.online_presence,
         "welcomeMessage": user.welcome_message,
         "postsCount": user.posts_count,
         "connectionsCount": user.connections_count,
         "createdAt": user.created_at,
         "updatedAt": user.updated_at,
+        "onboardingRequired": bool((user.completeness_score or 0) < 70),
         "connectedUserIds": user.connected_user_ids or [],
         "followingUserIds": user.following_user_ids or [],
         "blockedUserIds": user.blocked_user_ids or [],
@@ -188,10 +241,11 @@ def get_current_user_optional(
     if not authorization or not authorization.startswith("Bearer "):
         return None
     token = authorization.removeprefix("Bearer ").strip()
-    session = db.query(UserSession).filter(
-        UserSession.access_token == token,
-        UserSession.is_active.is_(True),
-    ).first()
+    payload = _jwt_decode(token)
+    session_id = payload.get("sid")
+    if not session_id:
+        return None
+    session = db.query(UserSession).filter(UserSession.id == session_id, UserSession.is_active.is_(True)).first()
     if not session or not session.user or not session.user.is_active:
         return None
     return session.user
@@ -221,10 +275,11 @@ def _current_session(
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing bearer token")
     token = authorization.removeprefix("Bearer ").strip()
-    session = db.query(UserSession).filter(
-        UserSession.access_token == token,
-        UserSession.is_active.is_(True),
-    ).first()
+    payload = _jwt_decode(token)
+    session_id = payload.get("sid")
+    if not session_id:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid session")
+    session = db.query(UserSession).filter(UserSession.id == session_id, UserSession.is_active.is_(True)).first()
     if not session or not session.user or not session.user.is_active:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid session")
     return session
@@ -235,7 +290,7 @@ def get_current_user(session: UserSession = Depends(_current_session)) -> User:
 
 
 def get_admin_user(user: User = Depends(get_current_user)) -> User:
-    if user.role != "admin":
+    if user.role not in {"superadmin", "moderator", "viewer"}:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
     return user
 
@@ -254,7 +309,7 @@ def _apply_user_update(user: User, payload: UserUpdate) -> User:
         "location": "location",
         "profileVisibility": "profile_visibility",
         "consentGiven": "consent_given",
-        "invitationCode": "invitation_code",
+        "referenceCode": "reference_code",
         "onlinePresence": "online_presence",
         "welcomeMessage": "welcome_message",
     }
@@ -277,7 +332,18 @@ def _apply_user_update(user: User, payload: UserUpdate) -> User:
 
 
 def _auth_payload(session: UserSession, user: User) -> dict:
-    return {"accessToken": session.access_token, "refreshToken": session.refresh_token, "user": _user_to_schema(user)}
+    ttl_minutes = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "60"))
+    now = int(time.time())
+    access_token = _jwt_encode(
+        {
+            "sub": user.id,
+            "sid": session.id,
+            "role": user.role,
+            "iat": now,
+            "exp": now + (ttl_minutes * 60),
+        }
+    )
+    return {"accessToken": access_token, "refreshToken": session.refresh_token, "user": _user_to_schema(user)}
 
 
 def _otp_not_expired(otp: EmailOTP) -> bool:
