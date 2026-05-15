@@ -129,9 +129,137 @@ def migrate_legacy_users_table():
             text("select to_regclass('public.posts') is not null")
         ).scalar()
         if posts_exists:
-            connection.execute(
-                text("alter table posts add column if not exists engagement_enabled boolean not null default true")
+            post_statements = [
+                "alter table posts add column if not exists engagement_enabled boolean not null default true",
+                "alter table posts add column if not exists plain_text varchar(5000) not null default ''",
+                "alter table posts add column if not exists visibility varchar(30) not null default 'public'",
+                "alter table posts add column if not exists mentions json not null default '[]'::json",
+                "alter table posts add column if not exists deleted_at timestamp with time zone",
+                "alter table posts add column if not exists like_count integer not null default 0",
+                "alter table posts add column if not exists comment_count integer not null default 0",
+                "alter table posts add column if not exists repost_count integer not null default 0",
+                "create index if not exists ix_posts_author_created_at on posts (author_id, created_at)",
+                "create index if not exists ix_posts_visibility on posts (visibility)",
+            ]
+            for statement in post_statements:
+                connection.execute(text(statement))
+
+        post_domain_statements = [
+            """
+            create table if not exists post_media (
+                id varchar(36) primary key,
+                post_id varchar(36) not null references posts(id) on delete cascade,
+                media_type varchar(30) not null,
+                url varchar(1000) not null,
+                name varchar(255),
+                content_type varchar(150),
+                size_bytes integer,
+                media_metadata json not null default '{}'::json,
+                position integer not null default 0,
+                created_at timestamp with time zone not null default now()
             )
+            """,
+            """
+            create table if not exists post_reactions (
+                id varchar(36) primary key,
+                post_id varchar(36) not null references posts(id) on delete cascade,
+                user_id varchar(36) not null references users(id) on delete cascade,
+                reaction_type varchar(40) not null default 'like',
+                created_at timestamp with time zone not null default now(),
+                updated_at timestamp with time zone not null default now()
+            )
+            """,
+            """
+            create table if not exists comments (
+                id varchar(36) primary key,
+                post_id varchar(36) not null references posts(id) on delete cascade,
+                author_id varchar(36) not null references users(id) on delete cascade,
+                parent_comment_id varchar(36) references comments(id) on delete cascade,
+                body varchar(2000) not null,
+                depth integer not null default 1,
+                attachments json not null default '[]'::json,
+                moderation_status varchar(30) not null default 'approved',
+                moderation_reasons json not null default '[]'::json,
+                is_deleted boolean not null default false,
+                reply_count integer not null default 0,
+                like_count integer not null default 0,
+                created_at timestamp with time zone not null default now(),
+                updated_at timestamp with time zone not null default now()
+            )
+            """,
+            """
+            create table if not exists comment_reactions (
+                id varchar(36) primary key,
+                comment_id varchar(36) not null references comments(id) on delete cascade,
+                user_id varchar(36) not null references users(id) on delete cascade,
+                reaction_type varchar(40) not null default 'like',
+                created_at timestamp with time zone not null default now(),
+                updated_at timestamp with time zone not null default now()
+            )
+            """,
+            """
+            create table if not exists post_edit_history (
+                id varchar(36) primary key,
+                post_id varchar(36) not null references posts(id) on delete cascade,
+                editor_user_id varchar(36) references users(id) on delete set null,
+                snapshot json not null default '{}'::json,
+                created_at timestamp with time zone not null default now()
+            )
+            """,
+            """
+            create table if not exists reposts (
+                id varchar(36) primary key,
+                post_id varchar(36) not null references posts(id) on delete cascade,
+                user_id varchar(36) not null references users(id) on delete cascade,
+                quote varchar(1000),
+                created_at timestamp with time zone not null default now()
+            )
+            """,
+            """
+            create table if not exists platform_configs (
+                id varchar(36) primary key,
+                key varchar(150) unique not null,
+                value json not null default '{}'::json,
+                description varchar(500),
+                created_at timestamp with time zone not null default now(),
+                updated_at timestamp with time zone not null default now()
+            )
+            """,
+            "create index if not exists ix_post_media_post_id on post_media (post_id)",
+            "create index if not exists ix_post_media_post_position on post_media (post_id, position)",
+            "create index if not exists ix_post_reactions_post_id on post_reactions (post_id)",
+            "create unique index if not exists uq_post_reaction_user on post_reactions (post_id, user_id)",
+            "create index if not exists ix_post_reactions_post_type on post_reactions (post_id, reaction_type)",
+            "create index if not exists ix_comments_post_id on comments (post_id)",
+            "create index if not exists ix_comments_parent_comment_id on comments (parent_comment_id)",
+            "create index if not exists ix_comments_post_created_at on comments (post_id, created_at)",
+            "create unique index if not exists uq_comment_reaction_user on comment_reactions (comment_id, user_id)",
+            "create index if not exists ix_comment_reactions_comment_type on comment_reactions (comment_id, reaction_type)",
+            "create index if not exists ix_post_edit_history_post_created_at on post_edit_history (post_id, created_at)",
+            "create unique index if not exists ix_platform_configs_key on platform_configs (key)",
+            "create index if not exists ix_reposts_user_created_at on reposts (user_id, created_at)",
+        ]
+        if posts_exists:
+            for statement in post_domain_statements:
+                connection.execute(text(statement))
+
+
+def ensure_platform_defaults():
+    from ..models.model import PlatformConfig
+
+    db = SessionLocal()
+    try:
+        if not db.query(PlatformConfig).filter(PlatformConfig.key == "comment.maxDepth").first():
+            db.add(
+                PlatformConfig(
+                    key="comment.maxDepth",
+                    value={"value": 3},
+                    description="Maximum allowed nested comment depth.",
+                )
+            )
+            db.commit()
+    finally:
+        db.close()
 
 
 def get_db():

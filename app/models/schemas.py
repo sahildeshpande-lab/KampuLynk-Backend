@@ -10,11 +10,17 @@ EducationLevel = Literal["bachelors", "masters", "phd", "postdoctoral", "profess
 ProfileVisibility = Literal["public", "connections_only", "private"]
 NotificationTargetType = Literal["direct", "topic", "broadcast"]
 PostContentFormat = Literal["plain_text", "rich_text"]
+PostVisibility = Literal["public", "connections_only", "private"]
 AttachmentType = Literal["image", "pdf", "word", "ppt", "audio"]
 EngagementReaction = Literal["like", "love", "celebrate", "insightful", "curious", "support"]
+ReactionType = Literal["like", "love", "celebrate", "insightful", "curious", "support"]
 ModerationAction = Literal["reinstate", "delete", "escalate"]
 PostStatus = Literal["draft", "published"]
 EngagementAction = Literal["like", "comment", "repost"]
+ReportReason = Literal[
+    "spam", "harassment", "hate_speech", "misinformation",
+    "violence", "nudity", "copyright", "other"
+]
 EMAIL_PATTERN = r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
 EMAIL_EXAMPLE = "john@university.edu"
 PROFILE_PHOTO_EXAMPLE = "https://kampulynk-user-media.s3.amazonaws.com/users/sample/profile.png"
@@ -381,14 +387,45 @@ class LinkPreview(CamelModel):
 class PostCreateRequest(CamelModel):
     content: str = Field(default="", max_length=5000)
     status: PostStatus = "published"
+    autoSave: bool = False
+    autosaveIntervalSeconds: int = Field(default=30, ge=5, le=300)
+    visibility: PostVisibility = "public"
     engagementEnabled: bool = True
-    attachments: list[PostAttachment] = Field(default_factory=list, max_length=15)
-    hashtags: list[str] = Field(default_factory=list, max_length=20)
-    topicTags: list[str] = Field(default_factory=list, max_length=10)
     contentFormat: PostContentFormat = "plain_text"
     richTextJson: dict[str, Any] | None = None
-    richTextHtml: str | None = None
+    richTextHtml: str | None = Field(default=None, max_length=20000)
+    attachments: list[PostAttachment] = Field(default_factory=list, max_length=15)
+    media: list[PostAttachment] = Field(default_factory=list, max_length=15)
+    hashtags: list[str] = Field(default_factory=list, max_length=20)
+    mentions: list[str] = Field(default_factory=list, max_length=20)
+    topicTags: list[str] = Field(default_factory=list, max_length=10)
     linkPreview: LinkPreview | None = None
+
+
+class PostUpdateRequest(CamelModel):
+    content: str | None = Field(default=None, max_length=5000)
+    status: PostStatus | None = None
+    autoSave: bool | None = None
+    autosaveIntervalSeconds: int | None = Field(default=None, ge=5, le=300)
+    visibility: PostVisibility | None = None
+    engagementEnabled: bool | None = None
+    contentFormat: PostContentFormat | None = None
+    richTextJson: dict[str, Any] | None = None
+    richTextHtml: str | None = Field(default=None, max_length=20000)
+    attachments: list[PostAttachment] | None = Field(default=None, max_length=15)
+    media: list[PostAttachment] | None = Field(default=None, max_length=15)
+    hashtags: list[str] | None = Field(default=None, max_length=20)
+    mentions: list[str] | None = Field(default=None, max_length=20)
+    topicTags: list[str] | None = Field(default=None, max_length=10)
+    linkPreview: LinkPreview | None = None
+
+
+class PostReactionRequest(CamelModel):
+    reactionType: ReactionType = "like"
+
+
+class CommentReactionRequest(CamelModel):
+    reactionType: ReactionType = "like"
 
 
 class EngagementRequest(CamelModel):
@@ -398,6 +435,30 @@ class EngagementRequest(CamelModel):
     comment: str | None = Field(default=None, max_length=2000)
     parentCommentId: str | None = None
     attachments: list[PostAttachment] = Field(default_factory=list, max_length=5)
+    quote: str | None = Field(default=None, max_length=1000)
+
+
+class ReportPostRequest(CamelModel):
+    reason: ReportReason
+    description: str | None = Field(default=None, max_length=1000)
+
+
+class CommentCreateRequest(CamelModel):
+    content: str = Field(min_length=1, max_length=2000)
+    parentCommentId: str | None = None
+    attachments: list[PostAttachment] = Field(default_factory=list, max_length=5)
+
+
+class ReplyCreateRequest(CamelModel):
+    content: str = Field(min_length=1, max_length=2000)
+    attachments: list[PostAttachment] = Field(default_factory=list, max_length=5)
+
+
+class CommentUpdateRequest(CamelModel):
+    content: str = Field(min_length=1, max_length=2000)
+
+
+class RepostCreateRequest(CamelModel):
     quote: str | None = Field(default=None, max_length=1000)
 
 
