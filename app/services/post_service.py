@@ -120,9 +120,7 @@ def scan_content(text: str) -> tuple[str, list[str]]:
     return (status_value, reasons)
 
 
-def _resolve_post_status(status_value: str | None, auto_save: bool | None = None) -> str:
-    if auto_save is True:
-        return "draft"
+def _resolve_post_status(status_value: str | None) -> str:
     return "published" if status_value == "published" else "draft"
 
 
@@ -299,7 +297,7 @@ def _apply_content(post: Post, payload: PostCreateRequest | PostUpdateRequest, p
 
 
 def create_post(db: Session, current_user: User, payload: PostCreateRequest) -> Post:
-    resolved_status = _resolve_post_status(payload.status, payload.autoSave)
+    resolved_status = _resolve_post_status(payload.status)
     post = Post(
         author_id=current_user.id,
         status=resolved_status,
@@ -334,8 +332,8 @@ def update_post(db: Session, current_user: User, post_id: str, payload: PostUpda
         post.visibility = payload.visibility
     if payload.engagementEnabled is not None:
         post.engagement_enabled = payload.engagementEnabled
-    if payload.status is not None or payload.autoSave is not None:
-        post.status = _resolve_post_status(payload.status or post.status, payload.autoSave)
+    if payload.status is not None:
+        post.status = _resolve_post_status(payload.status)
     _apply_content(post, payload, partial=True)
     post.moderation_status, post.moderation_reasons = scan_content(post.plain_text)
     _publish_gate(post.status, post.moderation_status, post.moderation_reasons or [])

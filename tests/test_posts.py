@@ -126,13 +126,11 @@ def test_post_is_blocked_when_spam_or_profanity_detected(client):
 def test_autosave_draft_and_publish_flow(client):
     headers = _signup(client, "autosave.user@university.edu")
     draft = client.post(
-        "/posts/autosave-draft",
+        "/posts",
         headers=headers,
         json={
             "content": "WIP draft post",
-            "status": "published",
-            "autoSave": True,
-            "autosaveIntervalSeconds": 30,
+            "status": "draft",
         },
     )
     assert draft.status_code == 201
@@ -142,7 +140,7 @@ def test_autosave_draft_and_publish_flow(client):
     published = client.patch(
         f"/posts/{post_id}",
         headers=headers,
-        json={"status": "published", "autoSave": False, "content": "Final clean content"},
+        json={"status": "published", "content": "Final clean content"},
     )
     assert published.status_code == 200
     assert published.json()["data"]["status"] == "published"
@@ -151,9 +149,9 @@ def test_autosave_draft_and_publish_flow(client):
 def test_manual_rescan_flow(client):
     headers = _signup(client, "rescan.user@university.edu")
     created = client.post(
-        "/posts/autosave-draft",
+        "/posts",
         headers=headers,
-        json={"content": "draft with damn keyword", "autoSave": True},
+        json={"content": "draft with damn keyword", "status": "draft"},
     )
     assert created.status_code == 201
     post_id = created.json()["data"]["id"]

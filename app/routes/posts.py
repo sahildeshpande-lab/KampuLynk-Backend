@@ -42,18 +42,6 @@ def create_post(
     return api_response("Post created", post_service.post_to_schema(db, post))
 
 
-@router.post("/posts/autosave-draft", response_model=ApiResponse, status_code=status.HTTP_201_CREATED)
-def autosave_draft(
-    payload: PostCreateRequest,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    payload.status = "draft"
-    payload.autoSave = True
-    post = post_service.create_post(db, current_user, payload)
-    return api_response("Draft autosaved", post_service.post_to_schema(db, post))
-
-
 @router.get("/posts/{postId}", response_model=ApiResponse)
 def get_post(postId: str, db: Session = Depends(get_db)):
     post = post_service.post_or_404(db, postId)

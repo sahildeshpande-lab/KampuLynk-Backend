@@ -387,15 +387,21 @@ class LinkPreview(CamelModel):
 class PostCreateRequest(CamelModel):
     content: str = Field(default="", max_length=5000)
     status: PostStatus = "published"
-    autoSave: bool = False
-    autosaveIntervalSeconds: int = Field(default=30, ge=5, le=300)
     visibility: PostVisibility = "public"
     engagementEnabled: bool = True
     contentFormat: PostContentFormat = "plain_text"
     richTextJson: dict[str, Any] | None = None
     richTextHtml: str | None = Field(default=None, max_length=20000)
-    attachments: list[PostAttachment] = Field(default_factory=list, max_length=15)
-    media: list[PostAttachment] = Field(default_factory=list, max_length=15)
+    attachments: list[PostAttachment] = Field(
+        default_factory=list,
+        max_length=15,
+        description="Legacy alias for media. Prefer media.",
+    )
+    media: list[PostAttachment] = Field(
+        default_factory=list,
+        max_length=15,
+        description="Canonical post media field.",
+    )
     hashtags: list[str] = Field(default_factory=list, max_length=20)
     mentions: list[str] = Field(default_factory=list, max_length=20)
     topicTags: list[str] = Field(default_factory=list, max_length=10)
@@ -405,15 +411,21 @@ class PostCreateRequest(CamelModel):
 class PostUpdateRequest(CamelModel):
     content: str | None = Field(default=None, max_length=5000)
     status: PostStatus | None = None
-    autoSave: bool | None = None
-    autosaveIntervalSeconds: int | None = Field(default=None, ge=5, le=300)
     visibility: PostVisibility | None = None
     engagementEnabled: bool | None = None
     contentFormat: PostContentFormat | None = None
     richTextJson: dict[str, Any] | None = None
     richTextHtml: str | None = Field(default=None, max_length=20000)
-    attachments: list[PostAttachment] | None = Field(default=None, max_length=15)
-    media: list[PostAttachment] | None = Field(default=None, max_length=15)
+    attachments: list[PostAttachment] | None = Field(
+        default=None,
+        max_length=15,
+        description="Legacy alias for media. Prefer media.",
+    )
+    media: list[PostAttachment] | None = Field(
+        default=None,
+        max_length=15,
+        description="Canonical post media field.",
+    )
     hashtags: list[str] | None = Field(default=None, max_length=20)
     mentions: list[str] | None = Field(default=None, max_length=20)
     topicTags: list[str] | None = Field(default=None, max_length=10)

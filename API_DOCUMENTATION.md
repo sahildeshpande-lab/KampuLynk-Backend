@@ -352,6 +352,74 @@ curl -X POST "http://127.0.0.1:8000/auth/logout" \
 { "status": false, "message": "Missing bearer token", "data": null }
 ```
 
+## 7] Posts
+
+### Media Field Note
+
+- Canonical field for post files: `media`
+- Legacy alias still accepted: `attachments`
+- If both are sent, backend uses `media`
+- Response includes both for backward compatibility; clients should read/write `media`
+
+### POST /posts
+
+**Endpoint:** `POST /posts`
+
+**Request (recommended):**
+```json
+{
+  "content": "Research update from today",
+  "status": "published",
+  "visibility": "public",
+  "engagementEnabled": true,
+  "contentFormat": "rich_text",
+  "richTextHtml": "<p>Research update from today</p>",
+  "media": [
+    {
+      "type": "image",
+      "url": "https://cdn.example.com/posts/sample.jpg",
+      "name": "sample.jpg",
+      "contentType": "image/jpeg",
+      "sizeBytes": 123456,
+      "metadata": {}
+    }
+  ],
+  "hashtags": ["#ai"],
+  "topicTags": ["research"]
+}
+```
+
+**Notes:**
+- `status` controls draft/publish: `published` or `draft`
+- content gate checks run for publish flow
+
+### PATCH /posts/{postId}
+
+**Endpoint:** `PATCH /posts/{postId}`
+
+**Request (partial):**
+```json
+{
+  "status": "published",
+  "content": "Final revised post content",
+  "media": []
+}
+```
+
+### POST /posts/{postId}/rescan
+
+Manual re-scan for edited content.
+
+**Endpoint:** `POST /posts/{postId}/rescan`
+
+### Engagement Endpoints
+
+- `POST /posts/{postId}/reactions`
+- `DELETE /posts/{postId}/reactions`
+- `POST /posts/{postId}/comments`
+- `POST /comments/{commentId}/replies`
+- `POST /posts/{postId}/repost`
+
 ## 2] User Management
 
 ### GET /users/me
