@@ -207,7 +207,6 @@ def _user_to_schema(user: User) -> dict:
         "connectionsCount": user.connections_count,
         "createdAt": user.created_at,
         "updatedAt": user.updated_at,
-        # True => onboarding required (email verification pending), False => not required
         "is_onboarding": not user.is_email_verified,
         "connectedUserIds": user.connected_user_ids or [],
         "followingUserIds": user.following_user_ids or [],

@@ -125,6 +125,14 @@ def migrate_legacy_users_table():
             for statement in notification_statements:
                 connection.execute(text(statement))
 
+        posts_exists = connection.execute(
+            text("select to_regclass('public.posts') is not null")
+        ).scalar()
+        if posts_exists:
+            connection.execute(
+                text("alter table posts add column if not exists engagement_enabled boolean not null default true")
+            )
+
 
 def get_db():
     db = SessionLocal()

@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, JSON, String, func
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, JSON, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import relationship
 
 from ..db.db import Base
@@ -82,6 +82,7 @@ class User(Base):
         foreign_keys="Invitation.originator_user_id",
         cascade="all, delete-orphan",
     )
+    posts = relationship("Post", back_populates="author", cascade="all, delete-orphan", foreign_keys="Post.author_id")
 
 
 class UserAcademicInterest(Base):
@@ -245,3 +246,119 @@ class Invitation(Base):
 
     invitation_code = relationship("InvitationCode", back_populates="invitations")
     originator = relationship("User", back_populates="sent_invitations", foreign_keys=[originator_user_id])
+
+
+class Post(Base):
+    __tablename__ = "posts"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), index=True)
+    author_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    body = Column(String(5000), nullable=False)
+    engagement_enabled = Column(Boolean, default=True, nullable=False)
+    content_format = Column(String(30), default="plain_text", nullable=False)
+    rich_text_json = Column(JSON, nullable=True)
+    rich_text_html = Column(Text, nullable=True)
+    attachments = Column(JSON, default=list, nullable=False)
+    link_preview = Column(JSON, nullable=True)
+    hashtags = Column(JSON, default=list, nullable=False)
+    topic_tags = Column(JSON, default=list, nullable=False)
+    status = Column(String(30), default="published", nullable=False, index=True)
+    moderation_status = Column(String(30), default="approved", nullable=False, index=True)
+    moderation_reasons = Column(JSON, default=list, nullable=False)
+    edit_history = Column(JSON, default=list, nullable=False)
+    rescan_requested = Column(Boolean, default=False, nullable=False)
+    archived_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    author = relationship("User", back_populates="posts", foreign_keys=[author_id])
+    comments = relationship("PostComment", back_populates="post", cascade="all, delete-orphan")
+    engagements = relationship("PostEngagement", back_populates="post", cascade="all, delete-orphan")
+    reposts = relationship("Repost", back_populates="post", cascade="all, delete-orphan")
+
+
+class PostDraft(Base):
+    __tablename__ = "post_drafts"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), index=True)
+    author_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    body = Column(String(5000), default="", nullable=False)
+    content_format = Column(String(30), default="plain_text", nullable=False)
+    rich_text_json = Column(JSON, nullable=True)
+    rich_text_html = Column(Text, nullable=True)
+    attachments = Column(JSON, default=list, nullable=False)
+    link_preview = Column(JSON, nullable=True)
+    hashtags = Column(JSON, default=list, nullable=False)
+    topic_tags = Column(JSON, default=list, nullable=False)
+    autosave_interval_seconds = Column(Integer, default=30, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    author = relationship("User")
+
+
+class PostEngagement(Base):
+    __tablename__ = "post_engagements"
+    __table_args__ = (UniqueConstraint("post_id", "user_id", name="uq_post_engagement_user"),)
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    post_id = Column(String(36), ForeignKey("posts.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    reaction = Column(String(40), nullable=True, index=True)
+    is_liked = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    post = relationship("Post", back_populates="engagements")
+    user = relationship("User")
+
+
+class PostComment(Base):
+    __tablename__ = "post_comments"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), index=True)
+    post_id = Column(String(36), ForeignKey("posts.id", ondelete="CASCADE"), nullable=False, index=True)
+    author_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    parent_comment_id = Column(String(36), ForeignKey("post_comments.id", ondelete="CASCADE"), nullable=True, index=True)
+    body = Column(String(2000), nullable=False)
+    depth = Column(Integer, default=1, nullable=False, index=True)
+    attachments = Column(JSON, default=list, nullable=False)
+    moderation_status = Column(String(30), default="approved", nullable=False, index=True)
+    moderation_reasons = Column(JSON, default=list, nullable=False)
+    is_deleted = Column(Boolean, default=False, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    post = relationship("Post", back_populates="comments")
+    author = relationship("User")
+    replies = relationship("PostComment", cascade="all, delete-orphan")
+
+
+class Repost(Base):
+    __tablename__ = "reposts"
+    __table_args__ = (UniqueConstraint("post_id", "user_id", name="uq_repost_user_post"),)
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), index=True)
+    post_id = Column(String(36), ForeignKey("posts.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    quote = Column(String(1000), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    post = relationship("Post", back_populates="reposts")
+    user = relationship("User")
+
+
+class ModerationQueueItem(Base):
+    __tablename__ = "moderation_queue"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), index=True)
+    content_type = Column(String(30), nullable=False, index=True)
+    content_id = Column(String(36), nullable=False, index=True)
+    reporter_user_id = Column(String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    status = Column(String(30), default="pending", nullable=False, index=True)
+    reasons = Column(JSON, default=list, nullable=False)
+    admin_action = Column(String(30), nullable=True)
+    admin_user_id = Column(String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    admin_note = Column(String(500), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    resolved_at = Column(DateTime(timezone=True), nullable=True)

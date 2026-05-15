@@ -13,6 +13,7 @@ from .routes.auth import router as auth_router
 from .routes.notifications import router as notification_router
 from .routes.invitations import router as invitation_router
 from .routes.discovery import router as discovery_router
+from .routes.posts import POST_TAG, router as post_router
 from .routes.users import router as user_router
 from .services.email_service import (
     send_account_created_email,
@@ -59,6 +60,10 @@ app = FastAPI(
             "name": DISCOVERY_TAG,
             "description": "Search & discovery APIs (search by name/keyword/hashtag, filter by university/interest, etc.).",
         },
+        {
+            "name": POST_TAG,
+            "description": "Posts, feed pagination, drafts, media metadata, comments, reactions, and repost APIs.",
+        },
     ],
 )
 
@@ -71,6 +76,7 @@ app.include_router(admin_router)
 app.include_router(notification_router)
 app.include_router(invitation_router)
 app.include_router(discovery_router)
+app.include_router(post_router)
 
 
 @app.get("/")
