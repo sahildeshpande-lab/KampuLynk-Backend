@@ -9,6 +9,12 @@ SocialProvider = Literal["google", "apple"]
 EducationLevel = Literal["bachelors", "masters", "phd", "postdoctoral", "professional"]
 ProfileVisibility = Literal["public", "connections_only", "private"]
 NotificationTargetType = Literal["direct", "topic", "broadcast"]
+PostContentFormat = Literal["plain_text", "rich_text"]
+AttachmentType = Literal["image", "pdf", "word", "ppt", "audio"]
+EngagementReaction = Literal["like", "love", "celebrate", "insightful", "curious", "support"]
+ModerationAction = Literal["reinstate", "delete", "escalate"]
+PostStatus = Literal["draft", "published"]
+EngagementAction = Literal["like", "comment", "repost"]
 EMAIL_PATTERN = r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
 EMAIL_EXAMPLE = "john@university.edu"
 PROFILE_PHOTO_EXAMPLE = "https://kampulynk-user-media.s3.amazonaws.com/users/sample/profile.png"
@@ -354,3 +360,51 @@ class InvitationCodeDeactivateRequest(CamelModel):
 
 class AdminInvitationCodeCreateRequest(CamelModel):
     originatorUserId: str = Field(min_length=1)
+
+
+class PostAttachment(CamelModel):
+    type: AttachmentType
+    url: str = Field(min_length=1, max_length=1000)
+    name: str | None = Field(default=None, max_length=255)
+    contentType: str | None = Field(default=None, max_length=150)
+    sizeBytes: int | None = Field(default=None, ge=0)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class LinkPreview(CamelModel):
+    url: str = Field(min_length=1, max_length=1000)
+    title: str | None = Field(default=None, max_length=200)
+    description: str | None = Field(default=None, max_length=500)
+    imageUrl: str | None = Field(default=None, max_length=1000)
+
+
+class PostCreateRequest(CamelModel):
+    content: str = Field(default="", max_length=5000)
+    status: PostStatus = "published"
+    engagementEnabled: bool = True
+    attachments: list[PostAttachment] = Field(default_factory=list, max_length=15)
+    hashtags: list[str] = Field(default_factory=list, max_length=20)
+    topicTags: list[str] = Field(default_factory=list, max_length=10)
+    contentFormat: PostContentFormat = "plain_text"
+    richTextJson: dict[str, Any] | None = None
+    richTextHtml: str | None = None
+    linkPreview: LinkPreview | None = None
+
+
+class EngagementRequest(CamelModel):
+    action: EngagementAction
+    reaction: EngagementReaction | None = "like"
+    isLiked: bool = True
+    comment: str | None = Field(default=None, max_length=2000)
+    parentCommentId: str | None = None
+    attachments: list[PostAttachment] = Field(default_factory=list, max_length=5)
+    quote: str | None = Field(default=None, max_length=1000)
+
+
+class ReportContentRequest(CamelModel):
+    reasons: list[str] = Field(default_factory=list, max_length=10)
+
+
+class ModerationActionRequest(CamelModel):
+    action: ModerationAction
+    note: str | None = Field(default=None, max_length=500)
