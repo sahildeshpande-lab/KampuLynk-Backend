@@ -283,7 +283,6 @@ def recommend_posts(
         .filter(
             Post.status == "published",
             Post.deleted_at.is_(None),
-            Post.moderation_status != "deleted",
             Post.author_id != current_user.id,
             ~Post.author_id.in_(blocked_ids) if blocked_ids else True,
         )

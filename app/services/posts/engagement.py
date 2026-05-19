@@ -1,7 +1,7 @@
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
-from ...models.model import CommentReaction, Post, PostReaction, Repost, User, UserNotification
+from ...models.model import Comment, CommentReaction, Post, PostReaction, Repost, User, UserNotification
 from ...models.schemas import (
     CommentCreateRequest,
     CommentReactionRequest,
@@ -48,16 +48,36 @@ def _send_positive_recognition(db: Session, post: Post, milestone: int) -> None:
 
 
 def upsert_post_reaction(db: Session, current_user: User, post_id: str, payload: PostReactionRequest) -> dict:
+    reaction_type = (payload.reactionType or "like").strip().lower().replace("_", " ")
+    if reaction_type == "remove like":
+        return delete_post_reaction(db, current_user, post_id)
+    if reaction_type == "comment":
+        existing_comment = (
+            db.query(Comment)
+            .filter(Comment.post_id == post_id, Comment.author_id == current_user.id, Comment.is_deleted.is_(False))
+            .first()
+        )
+        if existing_comment:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Already commented on this post")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Use /posts/{postId}/comments to add comment")
+    if reaction_type == "repost":
+        existing_repost = db.query(Repost).filter(Repost.post_id == post_id, Repost.user_id == current_user.id).first()
+        if existing_repost:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Already reposted this post")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Use /posts/{postId}/repost to repost")
+
     post = post_or_404(db, post_id)
     ensure_post_engagement_enabled(post)
     reaction = db.query(PostReaction).filter(PostReaction.post_id == post_id, PostReaction.user_id == current_user.id).first()
     if not reaction:
-        reaction = PostReaction(post_id=post_id, user_id=current_user.id, reaction_type=payload.reactionType)
+        reaction = PostReaction(post_id=post_id, user_id=current_user.id, reaction_type=reaction_type)
         db.add(reaction)
         post.like_count = (post.like_count or 0) + 1
         _send_positive_recognition(db, post, _recognition_milestone(post.like_count or 0))
     else:
-        reaction.reaction_type = payload.reactionType
+        if reaction.reaction_type == "like" and reaction_type == "like":
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Already liked this post")
+        reaction.reaction_type = reaction_type
     db.commit()
     return post_reaction_summary(db, post_id)
 
@@ -104,12 +124,11 @@ def create_repost(db: Session, current_user: User, post_id: str, payload: Repost
     ensure_post_engagement_enabled(post)
     repost = db.query(Repost).filter(Repost.post_id == post_id, Repost.user_id == current_user.id).first()
     if repost:
-        repost.quote = payload.quote
-    else:
-        repost = Repost(post_id=post_id, user_id=current_user.id, quote=payload.quote)
-        db.add(repost)
-        post.repost_count = (post.repost_count or 0) + 1
-        _send_positive_recognition(db, post, _recognition_milestone((post.like_count or 0) + (post.repost_count or 0)))
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Already reposted this post")
+    repost = Repost(post_id=post_id, user_id=current_user.id, quote=payload.quote)
+    db.add(repost)
+    post.repost_count = (post.repost_count or 0) + 1
+    _send_positive_recognition(db, post, _recognition_milestone((post.like_count or 0) + (post.repost_count or 0)))
     db.commit()
     db.refresh(repost)
     return repost

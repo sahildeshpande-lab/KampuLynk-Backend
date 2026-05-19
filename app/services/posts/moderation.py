@@ -9,6 +9,17 @@ def report_post(db: Session, current_user: User, post_id: str, reasons: list[str
     post = post_or_404(db, post_id)
     if post.author_id == current_user.id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="You cannot report your own post")
+    already_reported = (
+        db.query(ModerationQueueItem)
+        .filter(
+            ModerationQueueItem.content_type == "post",
+            ModerationQueueItem.content_id == post.id,
+            ModerationQueueItem.reporter_user_id == current_user.id,
+        )
+        .first()
+    )
+    if already_reported:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="You already reported this post")
     post.is_flagged = True
     post.report_count = int(post.report_count or 0) + 1
     post.moderation_status = "pending"
@@ -20,6 +31,17 @@ def report_comment(db: Session, current_user: User, comment_id: str, reasons: li
     comment = comment_or_404(db, comment_id)
     if comment.author_id == current_user.id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="You cannot report your own comment")
+    already_reported = (
+        db.query(ModerationQueueItem)
+        .filter(
+            ModerationQueueItem.content_type == "comment",
+            ModerationQueueItem.content_id == comment.id,
+            ModerationQueueItem.reporter_user_id == current_user.id,
+        )
+        .first()
+    )
+    if already_reported:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="You already reported this comment")
     comment.is_flagged = True
     comment.report_count = int(comment.report_count or 0) + 1
     comment.moderation_status = "pending"
@@ -69,9 +91,12 @@ def review_moderated_content(db: Session, admin_user: User, content_id: str, con
             post.is_flagged = False
             post.moderation_status = "reviewed"
         elif action == "delete":
-            post.moderation_status = "deleted"
-            if not post.deleted_at:
-                post.deleted_at = now_utc()
+            deleted_at = now_utc()
+            post.moderation_status = "Deleted by admin"
+            post.moderation_reasons = list(queue_item.reasons or post.moderation_reasons or [])
+            post.archived_at = deleted_at
+            post.deleted_at = deleted_at
+            post.status = "archived"
             post.is_flagged = False
         elif action == "escalate":
             post.moderation_status = "escalated"

@@ -289,7 +289,8 @@ def test_canonical_reactions_comments_replies_and_repost_counters(client):
     assert liked.status_code == 200
     assert liked.json()["data"]["likeCount"] == 1
     liked_again = client.post(f"/posts/{post_id}/reactions", headers=headers, json={"reactionType": "like"})
-    assert liked_again.json()["data"]["likeCount"] == 1
+    assert liked_again.status_code == 400
+    assert "Already liked this post" in liked_again.json()["message"]
     unliked = client.delete(f"/posts/{post_id}/reactions", headers=headers)
     assert unliked.json()["data"]["likeCount"] == 0
 
@@ -311,7 +312,8 @@ def test_canonical_reactions_comments_replies_and_repost_counters(client):
     repost = client.post(f"/posts/{post_id}/repost", headers=headers, json={"quote": "Sharing"})
     assert repost.status_code == 201
     repost_again = client.post(f"/posts/{post_id}/repost", headers=headers, json={"quote": "Updated share"})
-    assert repost_again.status_code == 201
+    assert repost_again.status_code == 400
+    assert "Already reposted this post" in repost_again.json()["message"]
 
     fetched = client.get(f"/posts/{post_id}")
     assert fetched.json()["data"]["commentCount"] == 2

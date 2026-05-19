@@ -434,7 +434,7 @@ class PostUpdateRequest(CamelModel):
 
 
 class PostReactionRequest(CamelModel):
-    reactionType: ReactionType = "like"
+    reactionType: str = "like"
 
 
 class PostReactionCompatRequest(CamelModel):

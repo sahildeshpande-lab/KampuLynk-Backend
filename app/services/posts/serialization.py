@@ -119,6 +119,7 @@ def post_to_schema(db: Session, post: Post, include_comments: bool = False, incl
         "createdAt": post.created_at,
         "lastModifiedAt": post.updated_at,
         "updatedAt": post.updated_at,
+        "archivedAt": post.archived_at,
         "deletedAt": post.deleted_at,
         "userEngagements": user_reactions(db, post.id),
         **post_reaction_summary(db, post.id),

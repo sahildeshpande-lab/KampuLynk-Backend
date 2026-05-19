@@ -131,7 +131,7 @@ def delete_post(db: Session, current_user: User, post_id: str) -> None:
 
 
 def list_feed(db: Session, cursor: datetime | None = None, limit: int = 20) -> dict:
-    query = db.query(Post).filter(Post.status == "published", Post.deleted_at.is_(None), Post.moderation_status != "deleted")
+    query = db.query(Post).filter(Post.status == "published", Post.deleted_at.is_(None))
     if cursor:
         query = query.filter(Post.created_at < cursor)
     rows = query.order_by(Post.created_at.desc()).limit(limit + 1).all()
@@ -145,7 +145,7 @@ def list_feed(db: Session, cursor: datetime | None = None, limit: int = 20) -> d
 
 
 def list_posts_compat(db: Session, page: int, page_size: int, author_id: str | None = None, hashtag: str | None = None) -> dict:
-    query = db.query(Post).filter(Post.status == "published", Post.deleted_at.is_(None), Post.moderation_status != "deleted")
+    query = db.query(Post).filter(Post.status == "published", Post.deleted_at.is_(None))
     if author_id:
         query = query.filter(Post.author_id == author_id)
     posts = query.order_by(Post.created_at.desc()).limit(page_size).all()

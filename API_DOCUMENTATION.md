@@ -420,6 +420,175 @@ Manual re-scan for edited content.
 - `POST /comments/{commentId}/replies`
 - `POST /posts/{postId}/repost`
 
+### POST /posts/{postId}/reactions
+
+Create or update a user reaction for a post.
+
+**Endpoint:** `POST /posts/{postId}/reactions`
+
+**Request:**
+```json
+{ "reactionType": "like" }
+```
+
+**Supported `reactionType` values:**
+- `like`
+- `love`
+- `celebrate`
+- `insightful`
+- `curious`
+- `support`
+- `remove like` (or `remove_like`) to remove an existing like using this same endpoint
+
+**Business validations:**
+- One active reaction per user per post.
+- If already liked and request is `{"reactionType":"like"}`, API returns 400 with message: `Already liked this post`.
+- If `reactionType = comment`, API returns 400 and client must use `POST /posts/{postId}/comments`.
+- If `reactionType = repost`, API returns 400 and client must use `POST /posts/{postId}/repost`.
+
+**Successful Response (200):**
+```json
+{
+  "status": true,
+  "message": "Reaction updated",
+  "data": {
+    "likeCount": 1,
+    "reactions": { "like": 1 }
+  }
+}
+```
+
+**Unsuccessful Response (400 - duplicate like):**
+```json
+{
+  "status": false,
+  "message": "Already liked this post",
+  "data": null
+}
+```
+
+### DELETE /posts/{postId}/reactions
+
+Remove current user's reaction from the post.
+
+**Endpoint:** `DELETE /posts/{postId}/reactions`
+
+**Successful Response (200):**
+```json
+{
+  "status": true,
+  "message": "Reaction deleted",
+  "data": {
+    "likeCount": 0,
+    "reactions": {}
+  }
+}
+```
+
+### PATCH /posts/{postId}/report
+
+Report a post for moderation review.
+
+**Endpoint:** `PATCH /posts/{postId}/report`
+
+**Request:**
+```json
+{
+  "reason": "spam",
+  "description": "optional details"
+}
+```
+
+**Business validations:**
+- Users cannot report their own post.
+- Same user can report a given post only once.
+
+**Successful Response (200):**
+```json
+{ "status": true, "message": "Post reported", "data": null }
+```
+
+**Unsuccessful Response (400 - duplicate report):**
+```json
+{ "status": false, "message": "You already reported this post", "data": null }
+```
+
+### PATCH /comments/{commentId}/report
+
+Report a comment for moderation review.
+
+**Endpoint:** `PATCH /comments/{commentId}/report`
+
+**Request:**
+```json
+{
+  "reason": "harassment",
+  "description": "optional details"
+}
+```
+
+**Business validations:**
+- Users cannot report their own comment.
+- Same user can report a given comment only once.
+
+**Successful Response (200):**
+```json
+{ "status": true, "message": "Comment reported", "data": null }
+```
+
+**Unsuccessful Response (400 - duplicate report):**
+```json
+{ "status": false, "message": "You already reported this comment", "data": null }
+```
+
+### Admin Moderation Delete Behavior
+
+When admin reviews reported post content and chooses `delete` from moderation review:
+- Post is **soft deleted / archived** (not hard deleted).
+- Post fields are updated as:
+  - `moderationStatus = "Deleted by admin"`
+  - `moderationReasons` populated from moderation queue reasons
+  - `archivedAt` set to deletion timestamp
+  - `deletedAt` set to deletion timestamp
+  - `status = "archived"`
+
+### POST /posts/{postId}/repost
+
+Create a repost for the current user.
+
+**Endpoint:** `POST /posts/{postId}/repost`
+
+**Request:**
+```json
+{ "quote": "Loved the content" }
+```
+
+**Business validations:**
+- A user can repost a given post only once.
+- Second repost attempt by the same user for the same post returns 400.
+
+**Successful Response (201):**
+```json
+{
+  "status": true,
+  "message": "Post reposted",
+  "data": {
+    "id": "REPOST_ID",
+    "postId": "POST_ID",
+    "quote": "Loved the content"
+  }
+}
+```
+
+**Unsuccessful Response (400 - duplicate repost):**
+```json
+{
+  "status": false,
+  "message": "Already reposted this post",
+  "data": null
+}
+```
+
 ## 2] User Management
 
 ### GET /users/me
