@@ -12,6 +12,7 @@ from ..models.schemas import (
     ReportPostRequest,
     CommentUpdateRequest,
     PostCreateRequest,
+    PostReactionCompatRequest,
     PostReactionRequest,
     PostUpdateRequest,
     ReplyCreateRequest,
@@ -95,6 +96,17 @@ def upsert_post_reaction(
 ):
     data = post_service.upsert_post_reaction(db, current_user, postId, payload or PostReactionRequest())
     return api_response("Reaction updated", data)
+
+
+@router.post("/posts/{postId}/reaction", response_model=ApiResponse)
+def post_reaction_compat(
+    postId: str,
+    payload: PostReactionCompatRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    data = post_service.reaction_compat(db, current_user, postId, payload)
+    return api_response("Reaction processed", data)
 
 
 @router.delete("/posts/{postId}/reactions", response_model=ApiResponse)

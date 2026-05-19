@@ -437,6 +437,24 @@ class PostReactionRequest(CamelModel):
     reactionType: ReactionType = "like"
 
 
+class PostReactionCompatRequest(CamelModel):
+    reactionType: str = "like"
+    comment: str | None = Field(default=None, max_length=2000)
+    parentCommentId: str | None = None
+    attachments: list[PostAttachment] = Field(default_factory=list, max_length=5)
+    quote: str | None = Field(default=None, max_length=1000)
+
+    @field_validator("parentCommentId")
+    @classmethod
+    def normalize_parent_comment_id(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        if normalized.lower() in {"", "none", "null", "string"}:
+            return None
+        return normalized
+
+
 class CommentReactionRequest(CamelModel):
     reactionType: ReactionType = "like"
 

@@ -183,6 +183,19 @@ def test_engagement_endpoint_supports_comment_and_repost(client):
     assert repost.json()["data"]["postId"] == post_id
 
 
+def test_reaction_compat_supports_comment_action(client):
+    headers = _signup(client, "reaction.compat.user@university.edu")
+    post_id = client.post("/posts", headers=headers, json={"content": "Compat reaction post"}).json()["data"]["id"]
+    res = client.post(
+        f"/posts/{post_id}/reaction",
+        headers=headers,
+        json={"reactionType": "comment", "comment": "Compat comment"},
+    )
+    assert res.status_code == 200
+    assert res.json()["data"]["action"] == "comment"
+    assert res.json()["data"]["comment"]["postId"] == post_id
+
+
 def test_engagement_blocked_when_disabled(client):
     headers = _signup(client, "engagement-disabled.user@university.edu")
     post_id = client.post(
@@ -366,3 +379,54 @@ def test_comment_depth_uses_platform_config(client):
             db.commit()
         finally:
             db.close()
+
+
+def test_configurable_blocklist_blocks_post_publish(client):
+    headers = _signup(client, "blocklist.config.user@university.edu")
+    db = SessionLocal()
+    try:
+        config = db.query(PlatformConfig).filter(PlatformConfig.key == "moderation.blocklist").first()
+        config.value = {"terms": ["forbidden phrase"]}
+        db.commit()
+    finally:
+        db.close()
+
+    blocked = client.post(
+        "/posts",
+        headers=headers,
+        json={"content": "This includes a forbidden phrase in content", "status": "published"},
+    )
+    assert blocked.status_code == 400
+    assert "blocked by content safety checks" in blocked.json()["message"]
+
+
+def test_comment_scan_detects_bypass_pattern(client):
+    headers = _signup(client, "bypass.scan.user@university.edu")
+    db = SessionLocal()
+    try:
+        config = db.query(PlatformConfig).filter(PlatformConfig.key == "moderation.blocklist").first()
+        config.value = {"terms": ["shit"]}
+        db.commit()
+    finally:
+        db.close()
+    post_id = client.post("/posts", headers=headers, json={"content": "seed post"}).json()["data"]["id"]
+
+    comment = client.post(
+        f"/posts/{post_id}/comments",
+        headers=headers,
+        json={"content": "s.h.i.t pattern should be flagged"},
+    )
+    assert comment.status_code == 201
+    assert "blocklist" in comment.json()["data"]["moderationReasons"]
+
+
+def test_top_level_comment_accepts_placeholder_parent_id(client):
+    headers = _signup(client, "placeholder.parent.user@university.edu")
+    post_id = client.post("/posts", headers=headers, json={"content": "Parent placeholder"}).json()["data"]["id"]
+    comment = client.post(
+        f"/posts/{post_id}/comments",
+        headers=headers,
+        json={"content": "Top-level comment", "parentCommentId": "string"},
+    )
+    assert comment.status_code == 201
+    assert comment.json()["data"]["depth"] == 1

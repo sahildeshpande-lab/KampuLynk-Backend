@@ -305,6 +305,14 @@ def ensure_platform_defaults():
                     description="Maximum allowed nested comment depth.",
                 )
             )
+        if not db.query(PlatformConfig).filter(PlatformConfig.key == "moderation.blocklist").first():
+            db.add(
+                PlatformConfig(
+                    key="moderation.blocklist",
+                    value={"terms": ["damn", "shit", "buy followers", "free crypto", "click this scam", "visit shady link"]},
+                    description="Case-insensitive blocked terms used during post/comment content scanning.",
+                )
+            )
             db.commit()
     finally:
         db.close()
