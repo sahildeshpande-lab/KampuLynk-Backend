@@ -17,6 +17,7 @@ from ..models.schemas import (
     SignupRequest,
     VerifyOTPRequest,
 )
+from ..services.activity_service import track_user_activity
 from .shared import (
     _auth_payload,
     _create_otp,
@@ -287,6 +288,7 @@ def login(payload: LoginRequest, request: Request, db: Session = Depends(get_db)
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="User is inactive")
     _clear_login_rate_limit(db, payload.email, ip)
     session = _create_session(db, user)
+    track_user_activity(db, user, "login", {"loginType": user.login_type})
     return api_response("Login successful", _auth_payload(session, user))
 
 
@@ -309,6 +311,7 @@ def social_login(payload: OAuthRequest, db: Session = Depends(get_db)):
         db.commit()
         db.refresh(user)
     session = _create_session(db, user)
+    track_user_activity(db, user, "login", {"loginType": user.login_type})
     return api_response(f"{provider.title()} login successful", _auth_payload(session, user))
 
 

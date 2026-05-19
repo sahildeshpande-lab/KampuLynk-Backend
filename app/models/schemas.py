@@ -15,6 +15,7 @@ AttachmentType = Literal["image", "pdf", "word", "ppt", "audio"]
 EngagementReaction = Literal["like", "love", "celebrate", "insightful", "curious", "support"]
 ReactionType = Literal["like", "love", "celebrate", "insightful", "curious", "support"]
 ModerationAction = Literal["reinstate", "delete", "escalate"]
+ReviewContentType = Literal["post", "comment"]
 PostStatus = Literal["draft", "published"]
 EngagementAction = Literal["like", "comment", "repost"]
 ReportReason = Literal[
@@ -392,11 +393,11 @@ class PostCreateRequest(CamelModel):
     contentFormat: PostContentFormat = "plain_text"
     richTextJson: dict[str, Any] | None = None
     richTextHtml: str | None = Field(default=None, max_length=20000)
-    attachments: list[PostAttachment] = Field(
-        default_factory=list,
-        max_length=15,
-        description="Legacy alias for media. Prefer media.",
-    )
+    # attachments: list[PostAttachment] = Field(
+    #     default_factory=list,
+    #     max_length=15,
+    #     description="Legacy alias for media. Prefer media.",
+    # )
     media: list[PostAttachment] = Field(
         default_factory=list,
         max_length=15,
@@ -455,6 +456,11 @@ class ReportPostRequest(CamelModel):
     description: str | None = Field(default=None, max_length=1000)
 
 
+class ReportCommentRequest(CamelModel):
+    reason: ReportReason
+    description: str | None = Field(default=None, max_length=1000)
+
+
 class CommentCreateRequest(CamelModel):
     content: str = Field(min_length=1, max_length=2000)
     parentCommentId: str | None = None
@@ -481,3 +487,34 @@ class ReportContentRequest(CamelModel):
 class ModerationActionRequest(CamelModel):
     action: ModerationAction
     note: str | None = Field(default=None, max_length=500)
+
+
+class AdminReviewContentActionRequest(CamelModel):
+    type: ReviewContentType
+    action: ModerationAction
+    note: str | None = Field(default=None, max_length=500)
+
+
+class DateDauItem(CamelModel):
+    date: str
+    dau: int
+
+
+class DateNewUserItem(CamelModel):
+    date: str
+    newUsers: int
+
+
+class TopUniversityItem(CamelModel):
+    university: str
+    count: int
+
+
+class CountryDistributionItem(CamelModel):
+    country: str
+    count: int
+
+
+class TopMajorItem(CamelModel):
+    major: str
+    count: int

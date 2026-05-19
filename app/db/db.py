@@ -81,6 +81,7 @@ def migrate_legacy_users_table():
             "alter table users add column if not exists academic_interests json not null default '[]'::json",
             "alter table users add column if not exists graduation_date varchar(7)",
             "alter table users add column if not exists location varchar(255)",
+            "alter table users add column if not exists country varchar(120)",
             "alter table users add column if not exists profile_visibility varchar(30) not null default 'public'",
             "alter table users add column if not exists completeness_score integer not null default 0",
             """alter table users add column if not exists notification_preferences json not null default '{"email": true, "push": true, "inApp": true}'::json""",
@@ -106,6 +107,7 @@ def migrate_legacy_users_table():
             "create index if not exists ix_users_major on users (major)",
             "create index if not exists ix_users_minor on users (minor)",
             "create index if not exists ix_users_education_level on users (education_level)",
+            "create index if not exists ix_users_country on users (country)",
         ]
         for statement in statements:
             connection.execute(text(statement))
@@ -138,8 +140,12 @@ def migrate_legacy_users_table():
                 "alter table posts add column if not exists like_count integer not null default 0",
                 "alter table posts add column if not exists comment_count integer not null default 0",
                 "alter table posts add column if not exists repost_count integer not null default 0",
+                "alter table posts add column if not exists is_flagged boolean not null default false",
+                "alter table posts add column if not exists report_count integer not null default 0",
                 "create index if not exists ix_posts_author_created_at on posts (author_id, created_at)",
                 "create index if not exists ix_posts_visibility on posts (visibility)",
+                "create index if not exists ix_posts_is_flagged on posts (is_flagged)",
+                "create index if not exists ix_posts_moderation_status on posts (moderation_status)",
             ]
             for statement in post_statements:
                 connection.execute(text(statement))
@@ -180,6 +186,8 @@ def migrate_legacy_users_table():
                 attachments json not null default '[]'::json,
                 moderation_status varchar(30) not null default 'approved',
                 moderation_reasons json not null default '[]'::json,
+                is_flagged boolean not null default false,
+                report_count integer not null default 0,
                 is_deleted boolean not null default false,
                 reply_count integer not null default 0,
                 like_count integer not null default 0,
@@ -187,6 +195,8 @@ def migrate_legacy_users_table():
                 updated_at timestamp with time zone not null default now()
             )
             """,
+            "alter table comments add column if not exists is_flagged boolean not null default false",
+            "alter table comments add column if not exists report_count integer not null default 0",
             """
             create table if not exists comment_reactions (
                 id varchar(36) primary key,
@@ -233,6 +243,8 @@ def migrate_legacy_users_table():
             "create index if not exists ix_comments_post_id on comments (post_id)",
             "create index if not exists ix_comments_parent_comment_id on comments (parent_comment_id)",
             "create index if not exists ix_comments_post_created_at on comments (post_id, created_at)",
+            "create index if not exists ix_comments_is_flagged on comments (is_flagged)",
+            "create index if not exists ix_comments_moderation_status on comments (moderation_status)",
             "create unique index if not exists uq_comment_reaction_user on comment_reactions (comment_id, user_id)",
             "create index if not exists ix_comment_reactions_comment_type on comment_reactions (comment_id, reaction_type)",
             "create index if not exists ix_post_edit_history_post_created_at on post_edit_history (post_id, created_at)",
@@ -242,6 +254,42 @@ def migrate_legacy_users_table():
         if posts_exists:
             for statement in post_domain_statements:
                 connection.execute(text(statement))
+
+        activity_statements = [
+            """
+            create table if not exists user_activities (
+                id varchar(36) primary key,
+                user_id varchar(36) not null references users(id) on delete cascade,
+                activity_type varchar(50) not null,
+                metadata json not null default '{}'::json,
+                created_at timestamp with time zone not null default now()
+            )
+            """,
+            "create index if not exists ix_user_activities_user_id on user_activities (user_id)",
+            "create index if not exists ix_user_activities_activity_type on user_activities (activity_type)",
+            "create index if not exists ix_user_activities_created_at on user_activities (created_at)",
+            "create index if not exists ix_user_activities_created_at_user_id on user_activities (created_at, user_id)",
+        ]
+        for statement in activity_statements:
+            connection.execute(text(statement))
+
+        daily_analytics_statements = [
+            """
+            create table if not exists daily_analytics (
+                id varchar(36) primary key,
+                date date not null,
+                dau integer not null default 0,
+                new_users integer not null default 0,
+                total_users integer not null default 0,
+                total_posts integer not null default 0,
+                created_at timestamp with time zone not null default now()
+            )
+            """,
+            "create unique index if not exists uq_daily_analytics_date on daily_analytics (date)",
+            "create index if not exists ix_daily_analytics_date on daily_analytics (date)",
+        ]
+        for statement in daily_analytics_statements:
+            connection.execute(text(statement))
 
 
 def ensure_platform_defaults():

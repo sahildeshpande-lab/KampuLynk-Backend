@@ -46,16 +46,45 @@ def _base64url_decode(data: str) -> bytes:
 
 
 def _jwt_secret() -> bytes:
+    # Prefer JWT_SECRET for signing tokens. SECRET_KEY is only an optional fallback.
     value = os.getenv("JWT_SECRET") or os.getenv("SECRET_KEY") or "dev-secret"
     return value.encode("utf-8")
 
 
+def _jwt_algorithm() -> str:
+    algorithm = os.getenv("JWT_ALGORITHM", "HS256").strip().upper()
+    supported = {"HS256", "HS384", "HS512"}
+    if algorithm not in supported:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Unsupported JWT_ALGORITHM '{algorithm}'. Supported values: {', '.join(sorted(supported))}",
+        )
+    return algorithm
+
+
+def _jwt_hash_name() -> str:
+    mapping = {
+        "HS256": "sha256",
+        "HS384": "sha384",
+        "HS512": "sha512",
+    }
+    return mapping[_jwt_algorithm()]
+
+
+def _jwt_expire_minutes() -> int:
+    try:
+        return int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "60"))
+    except ValueError:
+        return 60
+
+
 def _jwt_encode(payload: dict) -> str:
-    header = {"alg": "HS256", "typ": "JWT"}
+    algorithm = _jwt_algorithm()
+    header = {"alg": algorithm, "typ": "JWT"}
     header_b64 = _base64url_encode(json.dumps(header, separators=(",", ":"), sort_keys=True).encode("utf-8"))
     payload_b64 = _base64url_encode(json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8"))
     signing_input = f"{header_b64}.{payload_b64}".encode("ascii")
-    signature = hmac.new(_jwt_secret(), signing_input, hashlib.sha256).digest()
+    signature = hmac.new(_jwt_secret(), signing_input, getattr(hashlib, _jwt_hash_name())).digest()
     sig_b64 = _base64url_encode(signature)
     return f"{header_b64}.{payload_b64}.{sig_b64}"
 
@@ -66,8 +95,21 @@ def _jwt_decode(token: str) -> dict:
     except ValueError:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
 
+    try:
+        header = json.loads(_base64url_decode(header_b64))
+    except (ValueError, json.JSONDecodeError):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token header")
+
+    header_alg = header.get("alg")
+    expected_alg = _jwt_algorithm()
+    if header_alg != expected_alg:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token algorithm",
+        )
+
     signing_input = f"{header_b64}.{payload_b64}".encode("ascii")
-    expected_sig = hmac.new(_jwt_secret(), signing_input, hashlib.sha256).digest()
+    expected_sig = hmac.new(_jwt_secret(), signing_input, getattr(hashlib, _jwt_hash_name())).digest()
     actual_sig = _base64url_decode(sig_b64)
     if not hmac.compare_digest(expected_sig, actual_sig):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
@@ -332,7 +374,7 @@ def _apply_user_update(user: User, payload: UserUpdate) -> User:
 
 
 def _auth_payload(session: UserSession, user: User) -> dict:
-    ttl_minutes = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "60"))
+    ttl_minutes = _jwt_expire_minutes()
     now = int(time.time())
     access_token = _jwt_encode(
         {

@@ -8,6 +8,8 @@ from ..models.model import User
 from ..models.schemas import (
     ApiResponse,
     CommentCreateRequest,
+    ReportCommentRequest,
+    ReportPostRequest,
     CommentUpdateRequest,
     PostCreateRequest,
     PostReactionRequest,
@@ -16,7 +18,8 @@ from ..models.schemas import (
     RepostCreateRequest,
 )
 from ..services import post_service
-from .shared import api_response, get_current_user
+from ..services.activity_service import track_user_activity
+from .shared import api_response, get_current_user, get_current_user_optional
 
 POST_TAG = "7] Posts"
 
@@ -27,8 +30,11 @@ router = APIRouter(tags=[POST_TAG])
 def get_feed(
     cursor: datetime | None = Query(default=None),
     limit: int = Query(default=20, ge=1, le=100),
+    current_user: User | None = Depends(get_current_user_optional),
     db: Session = Depends(get_db),
 ):
+    if current_user:
+        track_user_activity(db, current_user, "feed_open")
     return api_response("Feed fetched", post_service.list_feed(db, cursor=cursor, limit=limit))
 
 
@@ -39,6 +45,7 @@ def create_post(
     db: Session = Depends(get_db),
 ):
     post = post_service.create_post(db, current_user, payload)
+    track_user_activity(db, current_user, "post_created", {"postId": post.id})
     return api_response("Post created", post_service.post_to_schema(db, post))
 
 
@@ -108,6 +115,7 @@ def create_comment(
     db: Session = Depends(get_db),
 ):
     comment = post_service.create_comment(db, current_user, postId, payload)
+    track_user_activity(db, current_user, "comment_created", {"postId": postId, "commentId": comment.id})
     return api_response("Comment created", post_service.comment_to_schema(comment, {}))
 
 
@@ -119,6 +127,7 @@ def create_reply(
     db: Session = Depends(get_db),
 ):
     comment = post_service.create_reply(db, current_user, commentId, payload)
+    track_user_activity(db, current_user, "comment_created", {"parentCommentId": commentId, "commentId": comment.id})
     return api_response("Reply created", post_service.comment_to_schema(comment, {}))
 
 
@@ -154,3 +163,31 @@ def create_repost(
 ):
     repost = post_service.create_repost(db, current_user, postId, payload or RepostCreateRequest())
     return api_response("Post reposted", {"id": repost.id, "postId": postId, "quote": repost.quote})
+
+
+@router.patch("/posts/{postId}/report", response_model=ApiResponse)
+def report_post(
+    postId: str,
+    payload: ReportPostRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    reasons = [payload.reason]
+    if payload.description:
+        reasons.append(payload.description.strip()[:200])
+    post_service.report_post(db, current_user, postId, reasons)
+    return api_response("Post reported")
+
+
+@router.patch("/comments/{commentId}/report", response_model=ApiResponse)
+def report_comment(
+    commentId: str,
+    payload: ReportCommentRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    reasons = [payload.reason]
+    if payload.description:
+        reasons.append(payload.description.strip()[:200])
+    post_service.report_comment(db, current_user, commentId, reasons)
+    return api_response("Comment reported")

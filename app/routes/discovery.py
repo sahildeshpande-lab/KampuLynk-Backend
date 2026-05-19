@@ -7,8 +7,9 @@ from sqlalchemy import exists, or_
 from sqlalchemy.orm import Session
 
 from ..db.db import get_db
-from ..models.model import User, UserAcademicInterest
+from ..models.model import Post, User, UserAcademicInterest
 from ..models.schemas import ApiResponse
+from ..services import post_service
 from .shared import _public_user, api_response, get_current_user_optional
 
 DISCOVERY_TAG = "6] Search & Discovery"
@@ -35,6 +36,10 @@ def _interest_exists_any(patterns: list[str]):
         (UserAcademicInterest.user_id == User.id)
         & or_(*(UserAcademicInterest.interest.ilike(pattern) for pattern in patterns))
     )
+
+
+def _normalize_interest(value: str) -> str:
+    return value.strip().lower()
 
 
 @router.get("/discovery/users/search", response_model=ApiResponse)
@@ -190,5 +195,122 @@ def filter_users(
 
     return api_response(
         "Users filtered",
+        {"items": items, "total": total, "limit": limit, "offset": offset},
+    )
+
+
+@router.get("/discovery/users/recommendations", response_model=ApiResponse)
+def recommend_users(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user_optional),
+    limit: int = Query(default=20, ge=1, le=50),
+    offset: int = Query(default=0, ge=0),
+):
+    if not current_user:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing bearer token")
+
+    connected_ids = set(current_user.connected_user_ids or [])
+    blocked_ids = set(current_user.blocked_user_ids or [])
+    excluded_ids = connected_ids | blocked_ids | {current_user.id}
+
+    candidate_users = (
+        db.query(User)
+        .filter(
+            User.is_active.is_(True),
+            User.profile_visibility != "private",
+            ~User.id.in_(excluded_ids) if excluded_ids else True,
+        )
+        .all()
+    )
+
+    ranked_items: list[dict] = []
+    for candidate in candidate_users:
+        candidate_connections = set(candidate.connected_user_ids or [])
+        mutual_count = len(connected_ids.intersection(candidate_connections))
+        if current_user.id in (candidate.blocked_user_ids or []):
+            continue
+        ranked_items.append(
+            {
+                "user": candidate,
+                "mutualConnections": mutual_count,
+                "score": (
+                    mutual_count,
+                    int(candidate.connections_count or 0),
+                    int(candidate.completeness_score or 0),
+                ),
+            }
+        )
+
+    ranked_items.sort(key=lambda row: row["score"], reverse=True)
+    total = len(ranked_items)
+    page_items = ranked_items[offset: offset + limit]
+    data_items = []
+    for row in page_items:
+        user_payload = _public_user(row["user"])
+        user_payload["mutualConnections"] = row["mutualConnections"]
+        data_items.append(user_payload)
+
+    return api_response(
+        "Recommended users fetched",
+        {"items": data_items, "total": total, "limit": limit, "offset": offset},
+    )
+
+
+@router.get("/discovery/posts/recommendations", response_model=ApiResponse)
+def recommend_posts(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user_optional),
+    limit: int = Query(default=20, ge=1, le=50),
+    offset: int = Query(default=0, ge=0),
+):
+    if not current_user:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing bearer token")
+
+    interests = {
+        _normalize_interest(item.interest)
+        for item in (current_user.academic_interests or [])
+        if item.interest and item.interest.strip()
+    }
+    if not interests:
+        return api_response(
+            "Recommended posts fetched",
+            {"items": [], "total": 0, "limit": limit, "offset": offset},
+        )
+
+    blocked_ids = set(current_user.blocked_user_ids or [])
+    posts = (
+        db.query(Post)
+        .filter(
+            Post.status == "published",
+            Post.deleted_at.is_(None),
+            Post.moderation_status != "deleted",
+            Post.author_id != current_user.id,
+            ~Post.author_id.in_(blocked_ids) if blocked_ids else True,
+        )
+        .order_by(Post.created_at.desc())
+        .all()
+    )
+
+    ranked_posts: list[tuple[int, Post]] = []
+    for post in posts:
+        if not post.author or not post.author.is_active:
+            continue
+        author_interest_set = {
+            _normalize_interest(item.interest)
+            for item in (post.author.academic_interests or [])
+            if item.interest and item.interest.strip()
+        }
+        overlap = len(interests.intersection(author_interest_set))
+        if overlap <= 0:
+            continue
+        ranked_posts.append((overlap, post))
+
+    ranked_posts.sort(key=lambda row: (row[0], row[1].created_at), reverse=True)
+    total = len(ranked_posts)
+    selected = ranked_posts[offset: offset + limit]
+    items = [post_service.post_to_schema(db, post) for _, post in selected]
+
+    return api_response(
+        "Recommended posts fetched",
         {"items": items, "total": total, "limit": limit, "offset": offset},
     )

@@ -1,3 +1,5 @@
+from datetime import date
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -5,6 +7,7 @@ from sqlalchemy.orm import Session
 from ..db.db import get_db
 from ..models.model import InvitationCode, User, UserSession
 from ..models.schemas import (
+    AdminReviewContentActionRequest,
     AdminUserCreate,
     ApiResponse,
     InvitationCodeAdminItem,
@@ -13,6 +16,8 @@ from ..models.schemas import (
     SignupRequest,
     UserUpdate,
 )
+from ..services import analytics_service
+from ..services import post_service
 from .shared import (
     _apply_user_update,
     _auth_payload,
@@ -29,6 +34,81 @@ from .shared import (
 ADMIN_TAG = "4] Admin User Management"
 
 router = APIRouter(tags=[ADMIN_TAG])
+
+
+@router.get("/admin/analytics/dau-trend", response_model=ApiResponse)
+def admin_dau_trend(
+    _: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+    days: int = Query(default=7, ge=1, le=90),
+    start_date: date | None = Query(default=None),
+    end_date: date | None = Query(default=None),
+):
+    data = analytics_service.dau_trend(
+        db,
+        days=days,
+        start_date=start_date,
+        end_date=end_date,
+    )
+    return api_response("DAU trend fetched", data)
+
+
+@router.get("/admin/analytics/dashboard", response_model=ApiResponse)
+def admin_analytics_dashboard(
+    _: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+    days: int = Query(default=7, ge=1, le=90),
+    start_date: date | None = Query(default=None),
+    end_date: date | None = Query(default=None),
+    top_limit: int = Query(default=5, ge=1, le=20),
+):
+    data = analytics_service.dashboard(
+        db,
+        days=days,
+        start_date=start_date,
+        end_date=end_date,
+        top_limit=top_limit,
+    )
+    return api_response("Admin analytics dashboard fetched", data)
+
+
+@router.get("/admin/review/content", response_model=ApiResponse)
+def admin_review_queue(
+    _: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+    type: str | None = Query(default=None),
+    moderationStatus: str | None = Query(default=None),
+    page: int = Query(default=1, ge=1),
+    pageSize: int = Query(default=20, ge=1, le=100),
+):
+    if type and type not in {"post", "comment"}:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="type must be post or comment")
+    data = post_service.list_moderation_queue(
+        db=db,
+        content_type=type,
+        moderation_status=moderationStatus,
+        page=page,
+        page_size=pageSize,
+    )
+    return api_response("Moderation queue fetched", data)
+
+
+@router.post("/admin/review/content/{contentId}", response_model=ApiResponse)
+def admin_review_content_action(
+    contentId: str,
+    payload: AdminReviewContentActionRequest,
+    admin_user: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+):
+    post_service.review_moderated_content(
+        db=db,
+        admin_user=admin_user,
+        content_id=contentId,
+        content_type=payload.type,
+        action=payload.action,
+        note=payload.note,
+    )
+    return api_response("Moderation action applied")
 
 
 @router.post("/auth/admin/signup", response_model=ApiResponse, status_code=status.HTTP_201_CREATED)

@@ -985,7 +985,92 @@ curl -X PATCH "http://127.0.0.1:8000/notifications/NOTIFICATION_ID/read" \
 
 ## 4] Admin - User Management
 
-Admin APIs require a user with `role = "admin"`.
+Admin APIs require an authenticated admin user.
+
+Allowed admin roles:
+- `superadmin`
+- `moderator`
+- `viewer`
+
+Non-admin users receive `403 Forbidden`. Missing/invalid tokens receive `401 Unauthorized`.
+
+## 4] Admin - Analytics
+
+### GET /admin/analytics/dau-trend
+
+Admin-only DAU (Daily Active Users) trend data.
+
+**Endpoint:** `GET /admin/analytics/dau-trend?days=7&start_date=YYYY-MM-DD&end_date=YYYY-MM-DD`
+
+**Query Params (optional):**
+- `days` (default `7`, min `1`, max `90`)
+- `start_date` (`YYYY-MM-DD`)
+- `end_date` (`YYYY-MM-DD`)
+
+**cURL:**
+```bash
+curl -X GET "http://127.0.0.1:8000/admin/analytics/dau-trend?days=7" \
+  -H "Authorization: Bearer ADMIN_ACCESS_TOKEN"
+```
+
+**Successful Response (200):**
+```json
+{
+  "status": true,
+  "message": "DAU trend fetched",
+  "data": {
+    "today_dau": 0,
+    "yesterday_dau": 0,
+    "growth_percentage": 0.0,
+    "trend": [
+      { "date": "2026-05-12", "dau": 0 }
+    ],
+    "range": { "start_date": "2026-05-12", "end_date": "2026-05-18" }
+  }
+}
+```
+
+### GET /admin/analytics/dashboard
+
+Admin analytics dashboard payload (summary + DAU trend + new user trend + demographics).
+
+**Endpoint:** `GET /admin/analytics/dashboard?days=7&start_date=YYYY-MM-DD&end_date=YYYY-MM-DD&top_limit=5`
+
+**Query Params (optional):**
+- `days` (default `7`, min `1`, max `90`)
+- `start_date` (`YYYY-MM-DD`)
+- `end_date` (`YYYY-MM-DD`)
+- `top_limit` (default `5`, min `1`, max `20`)
+
+**cURL:**
+```bash
+curl -X GET "http://127.0.0.1:8000/admin/analytics/dashboard?days=7&top_limit=5" \
+  -H "Authorization: Bearer ADMIN_ACCESS_TOKEN"
+```
+
+**Successful Response (200):**
+```json
+{
+  "status": true,
+  "message": "Admin analytics dashboard fetched",
+  "data": {
+    "summary": {
+      "total_users": 0,
+      "today_dau": 0,
+      "yesterday_dau": 0,
+      "dau_growth_percentage": 0.0,
+      "today_new_users": 0,
+      "new_user_growth_percentage": 0.0
+    },
+    "dau_trend": [{ "date": "2026-05-12", "dau": 0 }],
+    "new_user_trend": [{ "date": "2026-05-12", "new_users": 0 }],
+    "top_universities": [{ "university": "MIT", "count": 0 }],
+    "country_distribution": [{ "country": "USA", "count": 0 }],
+    "top_majors": [{ "major": "CS", "count": 0 }],
+    "range": { "start_date": "2026-05-12", "end_date": "2026-05-18" }
+  }
+}
+```
 
 ### POST /auth/admin/signup
 
