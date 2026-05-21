@@ -10,19 +10,11 @@ EducationLevel = Literal["bachelors", "masters", "phd", "postdoctoral", "profess
 ProfileVisibility = Literal["public", "connections_only", "private"]
 NotificationTargetType = Literal["direct", "topic", "broadcast"]
 PostContentFormat = Literal["plain_text", "rich_text"]
-PostVisibility = Literal["public", "connections_only", "private"]
 AttachmentType = Literal["image", "pdf", "word", "ppt", "audio"]
 EngagementReaction = Literal["like", "love", "celebrate", "insightful", "curious", "support"]
-ReactionType = Literal["like", "love", "celebrate", "insightful", "curious", "support"]
 ModerationAction = Literal["reinstate", "delete", "escalate"]
-ReviewContentType = Literal["post", "comment"]
 PostStatus = Literal["draft", "published"]
 EngagementAction = Literal["like", "comment", "repost"]
-ReportReason = Literal[
-    "spam", "harassment", "hate_speech", "misinformation",
-    "violence", "nudity", "copyright", "other"
-]
-SpamKeywordType = Literal["spam", "profanity"]
 EMAIL_PATTERN = r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
 EMAIL_EXAMPLE = "john@university.edu"
 PROFILE_PHOTO_EXAMPLE = "https://kampulynk-user-media.s3.amazonaws.com/users/sample/profile.png"
@@ -388,72 +380,15 @@ class LinkPreview(CamelModel):
 
 class PostCreateRequest(CamelModel):
     content: str = Field(default="", max_length=5000)
-    status: PostStatus = "draft"
-    visibility: PostVisibility = "public"
+    status: PostStatus = "published"
     engagementEnabled: bool = True
-    contentFormat: PostContentFormat = "plain_text"
-    # attachments: list[PostAttachment] = Field(
-    #     default_factory=list,
-    #     max_length=15,
-    #     description="Legacy alias for media. Prefer media.",
-    # )
-    media: list[PostAttachment] = Field(
-        default_factory=list,
-        max_length=15,
-        description="Canonical post media field.",
-    )
+    attachments: list[PostAttachment] = Field(default_factory=list, max_length=15)
     hashtags: list[str] = Field(default_factory=list, max_length=20)
-    mentions: list[str] = Field(default_factory=list, max_length=20)
     topicTags: list[str] = Field(default_factory=list, max_length=10)
+    contentFormat: PostContentFormat = "plain_text"
+    richTextJson: dict[str, Any] | None = None
+    richTextHtml: str | None = None
     linkPreview: LinkPreview | None = None
-
-
-class PostUpdateRequest(CamelModel):
-    content: str | None = Field(default=None, max_length=5000)
-    status: PostStatus | None = None
-    visibility: PostVisibility | None = None
-    engagementEnabled: bool | None = None
-    contentFormat: PostContentFormat | None = None
-    attachments: list[PostAttachment] | None = Field(
-        default=None,
-        max_length=15,
-        description="Legacy alias for media. Prefer media.",
-    )
-    media: list[PostAttachment] | None = Field(
-        default=None,
-        max_length=15,
-        description="Canonical post media field.",
-    )
-    hashtags: list[str] | None = Field(default=None, max_length=20)
-    mentions: list[str] | None = Field(default=None, max_length=20)
-    topicTags: list[str] | None = Field(default=None, max_length=10)
-    linkPreview: LinkPreview | None = None
-
-
-class PostReactionRequest(CamelModel):
-    reactionType: str = "like"
-
-
-class PostReactionCompatRequest(CamelModel):
-    reactionType: str = "like"
-    comment: str | None = Field(default=None, max_length=2000)
-    parentCommentId: str | None = None
-    attachments: list[PostAttachment] = Field(default_factory=list, max_length=5)
-    quote: str | None = Field(default=None, max_length=1000)
-
-    @field_validator("parentCommentId")
-    @classmethod
-    def normalize_parent_comment_id(cls, value: str | None) -> str | None:
-        if value is None:
-            return None
-        normalized = value.strip()
-        if normalized.lower() in {"", "none", "null", "string"}:
-            return None
-        return normalized
-
-
-class CommentReactionRequest(CamelModel):
-    reactionType: ReactionType = "like"
 
 
 class EngagementRequest(CamelModel):
@@ -466,40 +401,6 @@ class EngagementRequest(CamelModel):
     quote: str | None = Field(default=None, max_length=1000)
 
 
-class ReportPostRequest(CamelModel):
-    reason: ReportReason
-    description: str | None = Field(default=None, max_length=1000)
-
-
-class ReportCommentRequest(CamelModel):
-    reason: ReportReason
-    description: str | None = Field(default=None, max_length=1000)
-
-
-class ReportUserRequest(CamelModel):
-    reason: ReportReason
-    description: str | None = Field(default=None, max_length=1000)
-
-
-class CommentCreateRequest(CamelModel):
-    content: str = Field(min_length=1, max_length=2000)
-    parentCommentId: str | None = None
-    attachments: list[PostAttachment] = Field(default_factory=list, max_length=5)
-
-
-class ReplyCreateRequest(CamelModel):
-    content: str = Field(min_length=1, max_length=2000)
-    attachments: list[PostAttachment] = Field(default_factory=list, max_length=5)
-
-
-class CommentUpdateRequest(CamelModel):
-    content: str = Field(min_length=1, max_length=2000)
-
-
-class RepostCreateRequest(CamelModel):
-    quote: str | None = Field(default=None, max_length=1000)
-
-
 class ReportContentRequest(CamelModel):
     reasons: list[str] = Field(default_factory=list, max_length=10)
 
@@ -507,46 +408,3 @@ class ReportContentRequest(CamelModel):
 class ModerationActionRequest(CamelModel):
     action: ModerationAction
     note: str | None = Field(default=None, max_length=500)
-
-
-class AdminReviewContentActionRequest(CamelModel):
-    type: ReviewContentType
-    action: ModerationAction
-    note: str | None = Field(default=None, max_length=500)
-
-
-class SpamKeywordCreateRequest(CamelModel):
-    keyword: str = Field(min_length=1, max_length=255)
-    type: SpamKeywordType
-    isActive: bool = True
-
-
-class SpamKeywordUpdateRequest(CamelModel):
-    keyword: str | None = Field(default=None, min_length=1, max_length=255)
-    type: SpamKeywordType | None = None
-    isActive: bool | None = None
-
-
-class DateDauItem(CamelModel):
-    date: str
-    dau: int
-
-
-class DateNewUserItem(CamelModel):
-    date: str
-    newUsers: int
-
-
-class TopUniversityItem(CamelModel):
-    university: str
-    count: int
-
-
-class CountryDistributionItem(CamelModel):
-    country: str
-    count: int
-
-
-class TopMajorItem(CamelModel):
-    major: str
-    count: int
