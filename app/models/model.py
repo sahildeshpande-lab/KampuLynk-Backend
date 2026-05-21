@@ -441,7 +441,6 @@ class PostEditHistory(Base):
 class Repost(Base):
     __tablename__ = "reposts"
     __table_args__ = (
-        UniqueConstraint("post_id", "user_id", name="uq_repost_user_post"),
         Index("ix_reposts_user_created_at", "user_id", "created_at"),
     )
 
@@ -480,6 +479,19 @@ class ModerationQueueItem(Base):
     admin_note = Column(String(500), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     resolved_at = Column(DateTime(timezone=True), nullable=True)
+
+
+class SpamKeyword(Base):
+    __tablename__ = "spam_keywords"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), index=True)
+    keyword = Column(String(255), unique=True, nullable=False, index=True)
+    keyword_type = Column(String(30), nullable=False, index=True)
+    is_active = Column(Boolean, default=True, nullable=False, index=True)
+    created_by_user_id = Column(String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    updated_by_user_id = Column(String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
 
 PostEngagement = PostReaction

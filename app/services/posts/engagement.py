@@ -61,9 +61,6 @@ def upsert_post_reaction(db: Session, current_user: User, post_id: str, payload:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Already commented on this post")
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Use /posts/{postId}/comments to add comment")
     if reaction_type == "repost":
-        existing_repost = db.query(Repost).filter(Repost.post_id == post_id, Repost.user_id == current_user.id).first()
-        if existing_repost:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Already reposted this post")
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Use /posts/{postId}/repost to repost")
 
     post = post_or_404(db, post_id)
@@ -76,7 +73,7 @@ def upsert_post_reaction(db: Session, current_user: User, post_id: str, payload:
         _send_positive_recognition(db, post, _recognition_milestone(post.like_count or 0))
     else:
         if reaction.reaction_type == "like" and reaction_type == "like":
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Already liked this post")
+            return post_reaction_summary(db, post_id)
         reaction.reaction_type = reaction_type
     db.commit()
     return post_reaction_summary(db, post_id)
@@ -122,9 +119,6 @@ def delete_comment_reaction(db: Session, current_user: User, comment_id: str) ->
 def create_repost(db: Session, current_user: User, post_id: str, payload: RepostCreateRequest) -> Repost:
     post = post_or_404(db, post_id)
     ensure_post_engagement_enabled(post)
-    repost = db.query(Repost).filter(Repost.post_id == post_id, Repost.user_id == current_user.id).first()
-    if repost:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Already reposted this post")
     repost = Repost(post_id=post_id, user_id=current_user.id, quote=payload.quote)
     db.add(repost)
     post.repost_count = (post.repost_count or 0) + 1

@@ -32,6 +32,9 @@ coverage.xml
 *.py,cover
 .cache
 
+# Status file
+API_IMPLEMENTATION_STATUS.md
+
 # Environment variables
 .env
 .env.*

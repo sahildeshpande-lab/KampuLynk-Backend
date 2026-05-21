@@ -250,6 +250,7 @@ def migrate_legacy_users_table():
             "create index if not exists ix_post_edit_history_post_created_at on post_edit_history (post_id, created_at)",
             "create unique index if not exists ix_platform_configs_key on platform_configs (key)",
             "create index if not exists ix_reposts_user_created_at on reposts (user_id, created_at)",
+            "alter table reposts drop constraint if exists uq_repost_user_post",
         ]
         if posts_exists:
             for statement in post_domain_statements:
@@ -291,9 +292,29 @@ def migrate_legacy_users_table():
         for statement in daily_analytics_statements:
             connection.execute(text(statement))
 
+        spam_keywords_statements = [
+            """
+            create table if not exists spam_keywords (
+                id varchar(36) primary key,
+                keyword varchar(255) unique not null,
+                keyword_type varchar(30) not null,
+                is_active boolean not null default true,
+                created_by_user_id varchar(36) references users(id) on delete set null,
+                updated_by_user_id varchar(36) references users(id) on delete set null,
+                created_at timestamp with time zone not null default now(),
+                updated_at timestamp with time zone not null default now()
+            )
+            """,
+            "create index if not exists ix_spam_keywords_keyword on spam_keywords (keyword)",
+            "create index if not exists ix_spam_keywords_keyword_type on spam_keywords (keyword_type)",
+            "create index if not exists ix_spam_keywords_is_active on spam_keywords (is_active)",
+        ]
+        for statement in spam_keywords_statements:
+            connection.execute(text(statement))
+
 
 def ensure_platform_defaults():
-    from ..models.model import PlatformConfig
+    from ..models.model import PlatformConfig, SpamKeyword
 
     db = SessionLocal()
     try:
@@ -313,7 +334,20 @@ def ensure_platform_defaults():
                     description="Case-insensitive blocked terms used during post/comment content scanning.",
                 )
             )
-            db.commit()
+        if db.query(SpamKeyword).count() == 0:
+            defaults = [
+                ("buy followers", "spam"),
+                ("free crypto", "spam"),
+                ("click this scam", "spam"),
+                ("visit shady link", "spam"),
+                ("damn", "profanity"),
+                ("free", "profanity"),
+                ("money", "profanity"),
+                ("spam", "profanity"),
+            ]
+            for keyword, keyword_type in defaults:
+                db.add(SpamKeyword(keyword=keyword, keyword_type=keyword_type, is_active=True))
+        db.commit()
     finally:
         db.close()
 

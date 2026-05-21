@@ -8,7 +8,7 @@ from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from ...config import load_env_files
-from ...models.model import Comment, ModerationQueueItem, PlatformConfig, Post, PostMedia, User
+from ...models.model import Comment, ModerationQueueItem, PlatformConfig, Post, PostMedia, SpamKeyword, User
 from ...models.schemas import PostAttachment, PostCreateRequest, PostUpdateRequest
 
 load_env_files()
@@ -17,9 +17,10 @@ IMAGE_LIMIT = 5
 IMAGE_MAX_BYTES = 500 * 1024
 ALLOWED_ATTACHMENT_TYPES = {"image", "pdf", "word", "ppt", "audio"}
 DEFAULT_COMMENT_MAX_DEPTH = max(1, int(os.getenv("DEFAULT_COMMENT_MAX_DEPTH", "3")))
-SPAM_KEYWORDS = {"buy followers", "free crypto", "click this scam", "visit shady link"}
-PROFANITY_KEYWORDS = {"damn", "free", "money", "spam"}
-DEFAULT_BLOCKLIST_TERMS = sorted(SPAM_KEYWORDS | PROFANITY_KEYWORDS)
+DEFAULT_KEYWORDS = {
+    "spam": ["buy followers", "free crypto", "click this scam", "visit shady link"],
+    "profanity": ["damn", "free", "money", "spam"],
+}
 
 
 def now_utc() -> datetime:
@@ -95,20 +96,22 @@ def _normalize_blocklist_term(value: str) -> tuple[str, str]:
     return re.sub(r"[^a-z0-9]+", " ", lowered).strip(), re.sub(r"[^a-z0-9]+", "", lowered)
 
 
-def _configured_blocklist(db: Session) -> list[str]:
-    config = db.query(PlatformConfig).filter(PlatformConfig.key == "moderation.blocklist").first()
-    if not config or not isinstance(config.value, dict):
-        return DEFAULT_BLOCKLIST_TERMS
-    terms = config.value.get("terms")
-    if not isinstance(terms, list):
-        return DEFAULT_BLOCKLIST_TERMS
-    cleaned = []
-    for term in terms:
-        if isinstance(term, str):
-            normalized = term.strip().lower()
-            if normalized and normalized not in cleaned:
-                cleaned.append(normalized)
-    return cleaned or DEFAULT_BLOCKLIST_TERMS
+def _configured_keywords(db: Session) -> dict[str, list[str]]:
+    rows = (
+        db.query(SpamKeyword)
+        .filter(SpamKeyword.is_active.is_(True), SpamKeyword.keyword_type.in_(["spam", "profanity"]))
+        .order_by(SpamKeyword.created_at.asc())
+        .all()
+    )
+    grouped: dict[str, list[str]] = {"spam": [], "profanity": []}
+    for row in rows:
+        term = (row.keyword or "").strip().lower()
+        if term and term not in grouped[row.keyword_type]:
+            grouped[row.keyword_type].append(term)
+    for key, values in DEFAULT_KEYWORDS.items():
+        if not grouped[key]:
+            grouped[key] = values.copy()
+    return grouped
 
 
 def scan_content(db: Session, text: str) -> tuple[str, list[str]]:
@@ -116,15 +119,17 @@ def scan_content(db: Session, text: str) -> tuple[str, list[str]]:
     word_stream, _ = _normalize_scan_text(text)
     reasons = []
     blocked_terms = []
-    for term in _configured_blocklist(db):
+    configured_keywords = _configured_keywords(db)
+    all_terms = configured_keywords["spam"] + configured_keywords["profanity"]
+    for term in all_terms:
         spaced_term, compact_term = _normalize_blocklist_term(term)
         if (spaced_term and spaced_term in word_stream) or (compact_term and compact_term in compact_stream):
             blocked_terms.append(term)
     if blocked_terms:
         reasons.append("blocklist")
-    if any(keyword in compact_stream for keyword in [re.sub(r"[^a-z0-9]+", "", term) for term in SPAM_KEYWORDS]):
+    if any(keyword in compact_stream for keyword in [re.sub(r"[^a-z0-9]+", "", term) for term in configured_keywords["spam"]]):
         reasons.append("spam")
-    if any(keyword in compact_stream for keyword in [re.sub(r"[^a-z0-9]+", "", term) for term in PROFANITY_KEYWORDS]):
+    if any(keyword in compact_stream for keyword in [re.sub(r"[^a-z0-9]+", "", term) for term in configured_keywords["profanity"]]):
         reasons.append("profanity")
     return ("rejected" if reasons else "approved", reasons)
 
@@ -182,6 +187,13 @@ def get_comment_max_depth(db: Session) -> int:
 
 def post_or_404(db: Session, post_id: str) -> Post:
     post = db.query(Post).filter(Post.id == post_id, Post.status != "archived", Post.deleted_at.is_(None)).first()
+    if not post:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Post not found")
+    return post
+
+
+def post_for_edit_or_404(db: Session, post_id: str) -> Post:
+    post = db.query(Post).filter(Post.id == post_id).first()
     if not post:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Post not found")
     return post

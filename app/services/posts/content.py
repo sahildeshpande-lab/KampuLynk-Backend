@@ -17,6 +17,7 @@ from .common import (
     get_comment_max_depth,
     media_items_from_payload,
     now_utc,
+    post_for_edit_or_404,
     post_or_404,
     publish_gate,
     queue_moderation,
@@ -90,7 +91,7 @@ def create_post(db: Session, current_user: User, payload: PostCreateRequest) -> 
 
 
 def update_post(db: Session, current_user: User, post_id: str, payload: PostUpdateRequest) -> Post:
-    post = post_or_404(db, post_id)
+    post = post_for_edit_or_404(db, post_id)
     ensure_post_write_access(post, current_user)
     snapshot = jsonable_encoder(post_to_schema(db, post, include_comments=False, include_history=False))
     db.add(PostEditHistory(post_id=post.id, editor_user_id=current_user.id, snapshot=snapshot))
@@ -105,6 +106,9 @@ def update_post(db: Session, current_user: User, post_id: str, payload: PostUpda
         post.engagement_enabled = payload.engagementEnabled
     if payload.status is not None:
         post.status = resolve_post_status(payload.status)
+        if post.status in {"draft", "published"}:
+            post.archived_at = None
+            post.deleted_at = None
     apply_content(post, payload, partial=True)
     post.moderation_status, post.moderation_reasons = scan_content(db, post.plain_text)
     publish_gate(post.status, post.moderation_status, post.moderation_reasons or [])

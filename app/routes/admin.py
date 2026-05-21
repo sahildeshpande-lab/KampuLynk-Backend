@@ -13,6 +13,8 @@ from ..models.schemas import (
     InvitationCodeAdminItem,
     InvitationCodeDeactivateRequest,
     LoginRequest,
+    SpamKeywordCreateRequest,
+    SpamKeywordUpdateRequest,
     SignupRequest,
     UserUpdate,
 )
@@ -81,8 +83,8 @@ def admin_review_queue(
     page: int = Query(default=1, ge=1),
     pageSize: int = Query(default=20, ge=1, le=100),
 ):
-    if type and type not in {"post", "comment"}:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="type must be post or comment")
+    if type and type not in {"post", "comment", "user"}:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="type must be post, comment, or user")
     data = post_service.list_moderation_queue(
         db=db,
         content_type=type,
@@ -109,6 +111,52 @@ def admin_review_content_action(
         note=payload.note,
     )
     return api_response("Moderation action applied")
+
+
+@router.get("/admin/spam-words", response_model=ApiResponse)
+def admin_list_spam_words(
+    _: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+    type: str | None = Query(default=None),
+):
+    if type and type not in {"spam", "profanity"}:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="type must be spam or profanity")
+    items = post_service.list_spam_keywords(db=db, keyword_type=type)
+    return api_response("Spam keywords fetched" if items else "Data not found", {"items": items})
+
+
+@router.post("/admin/spam-words", response_model=ApiResponse, status_code=status.HTTP_201_CREATED)
+def admin_create_spam_word(
+    payload: SpamKeywordCreateRequest,
+    admin_user: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+):
+    item = post_service.create_spam_keyword(
+        db=db,
+        admin_user=admin_user,
+        keyword=payload.keyword,
+        keyword_type=payload.type,
+        is_active=payload.isActive,
+    )
+    return api_response("Spam keyword created", item)
+
+
+@router.patch("/admin/spam-words/{keywordId}", response_model=ApiResponse)
+def admin_update_spam_word(
+    keywordId: str,
+    payload: SpamKeywordUpdateRequest,
+    admin_user: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+):
+    item = post_service.update_spam_keyword(
+        db=db,
+        admin_user=admin_user,
+        keyword_id=keywordId,
+        keyword=payload.keyword,
+        keyword_type=payload.type,
+        is_active=payload.isActive,
+    )
+    return api_response("Spam keyword updated", item)
 
 
 @router.post("/auth/admin/signup", response_model=ApiResponse, status_code=status.HTTP_201_CREATED)

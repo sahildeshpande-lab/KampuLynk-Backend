@@ -3,7 +3,7 @@ import time
 
 from app import main
 from app.db.db import SessionLocal
-from app.models.model import PlatformConfig, UserNotification
+from app.models.model import PlatformConfig, SpamKeyword, UserNotification
 
 
 @pytest.fixture(autouse=True)
@@ -289,8 +289,8 @@ def test_canonical_reactions_comments_replies_and_repost_counters(client):
     assert liked.status_code == 200
     assert liked.json()["data"]["likeCount"] == 1
     liked_again = client.post(f"/posts/{post_id}/reactions", headers=headers, json={"reactionType": "like"})
-    assert liked_again.status_code == 400
-    assert "Already liked this post" in liked_again.json()["message"]
+    assert liked_again.status_code == 200
+    assert liked_again.json()["data"]["likeCount"] == 1
     unliked = client.delete(f"/posts/{post_id}/reactions", headers=headers)
     assert unliked.json()["data"]["likeCount"] == 0
 
@@ -312,14 +312,13 @@ def test_canonical_reactions_comments_replies_and_repost_counters(client):
     repost = client.post(f"/posts/{post_id}/repost", headers=headers, json={"quote": "Sharing"})
     assert repost.status_code == 201
     repost_again = client.post(f"/posts/{post_id}/repost", headers=headers, json={"quote": "Updated share"})
-    assert repost_again.status_code == 400
-    assert "Already reposted this post" in repost_again.json()["message"]
+    assert repost_again.status_code == 201
 
     fetched = client.get(f"/posts/{post_id}")
     assert fetched.json()["data"]["commentCount"] == 2
     assert fetched.json()["data"]["comments"][0]["replyCount"] == 1
     assert fetched.json()["data"]["comments"][0]["likeCount"] == 0
-    assert fetched.json()["data"]["repostCount"] == 1
+    assert fetched.json()["data"]["repostCount"] == 2
 
 
 def test_positive_messaging_on_post_recognition(client):
@@ -387,8 +386,7 @@ def test_configurable_blocklist_blocks_post_publish(client):
     headers = _signup(client, "blocklist.config.user@university.edu")
     db = SessionLocal()
     try:
-        config = db.query(PlatformConfig).filter(PlatformConfig.key == "moderation.blocklist").first()
-        config.value = {"terms": ["forbidden phrase"]}
+        db.add(SpamKeyword(keyword="forbidden phrase", keyword_type="spam", is_active=True))
         db.commit()
     finally:
         db.close()
@@ -406,8 +404,7 @@ def test_comment_scan_detects_bypass_pattern(client):
     headers = _signup(client, "bypass.scan.user@university.edu")
     db = SessionLocal()
     try:
-        config = db.query(PlatformConfig).filter(PlatformConfig.key == "moderation.blocklist").first()
-        config.value = {"terms": ["shit"]}
+        db.add(SpamKeyword(keyword="shit", keyword_type="profanity", is_active=True))
         db.commit()
     finally:
         db.close()
@@ -432,3 +429,31 @@ def test_top_level_comment_accepts_placeholder_parent_id(client):
     )
     assert comment.status_code == 201
     assert comment.json()["data"]["depth"] == 1
+
+
+def test_archived_post_can_be_edited_and_republished(client):
+    headers = _signup(client, "archived.edit.user@university.edu")
+    post_id = client.post("/posts", headers=headers, json={"content": "to archive"}).json()["data"]["id"]
+
+    deleted = client.delete(f"/posts/{post_id}", headers=headers)
+    assert deleted.status_code == 200
+
+    # Archived posts should not accept engagement/report actions while archived.
+    like_while_archived = client.post(f"/posts/{post_id}/reactions", headers=headers, json={"reactionType": "like"})
+    assert like_while_archived.status_code == 404
+    report_while_archived = client.patch(f"/posts/{post_id}/report", headers=headers, json={"reason": "spam"})
+    assert report_while_archived.status_code == 404
+
+    # Author can still edit and move post back to active state.
+    restored = client.patch(
+        f"/posts/{post_id}",
+        headers=headers,
+        json={"content": "edited after archive", "status": "published"},
+    )
+    assert restored.status_code == 200
+    assert restored.json()["data"]["status"] == "published"
+    assert restored.json()["data"]["archivedAt"] is None
+    assert restored.json()["data"]["deletedAt"] is None
+
+    fetched = client.get(f"/posts/{post_id}")
+    assert fetched.status_code == 200

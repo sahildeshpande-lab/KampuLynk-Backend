@@ -151,7 +151,7 @@ def test_admin_delete_post_sets_archival_and_moderation_reasons(client):
     try:
         post = db.query(Post).filter(Post.id == post_id).first()
         assert post is not None
-        assert post.moderation_status == "Deleted by admin"
+        assert post.moderation_status == "deleted"
         assert post.moderation_reasons
         assert post.archived_at is not None
         assert post.deleted_at is not None
@@ -163,3 +163,29 @@ def test_moderation_queue_requires_admin(client):
     user_token, _ = _signup(client, "moderation.nonadmin@test.com")
     res = client.get("/admin/review/content", headers=_bearer(user_token))
     assert res.status_code == 403
+
+
+def test_report_user_with_reason_and_admin_queue(client):
+    reporter_token, _ = _signup(client, "moderation.user.reporter@test.com")
+    target_token, target_user_id = _signup(client, "moderation.user.target@test.com")
+    admin_token, _ = _signup(client, "moderation.user.admin@test.com", admin=True)
+
+    report_res = client.patch(
+        f"/users/{target_user_id}/report",
+        headers=_bearer(reporter_token),
+        json={"reason": "harassment", "description": "abusive behavior"},
+    )
+    assert report_res.status_code == 200
+
+    duplicate_report = client.patch(
+        f"/users/{target_user_id}/report",
+        headers=_bearer(reporter_token),
+        json={"reason": "harassment"},
+    )
+    assert duplicate_report.status_code == 400
+    assert "already reported this user" in duplicate_report.json()["message"].lower()
+
+    queue_res = client.get("/admin/review/content?type=user", headers=_bearer(admin_token))
+    assert queue_res.status_code == 200
+    queue_items = queue_res.json()["data"]["items"]
+    assert any(item["id"] == target_user_id and item["type"] == "user" for item in queue_items)

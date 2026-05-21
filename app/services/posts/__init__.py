@@ -31,11 +31,15 @@ from .engagement import (
     upsert_post_reaction,
 )
 from .moderation import (
+    create_spam_keyword,
+    list_spam_keywords,
     list_moderation_queue,
     manual_rescan_post,
     report_comment,
     report_post,
+    report_user,
     review_moderated_content,
+    update_spam_keyword,
 )
 from .serialization import comment_to_schema, comments_tree, media_to_schema, post_reaction_summary, post_to_schema, user_reactions
 
@@ -58,8 +62,10 @@ __all__ = [
     "ensure_post_write_access",
     "extract_plain_text",
     "get_comment_max_depth",
+    "create_spam_keyword",
     "list_feed",
     "list_moderation_queue",
+    "list_spam_keywords",
     "list_posts_compat",
     "manual_rescan_post",
     "media_to_schema",
@@ -69,8 +75,10 @@ __all__ = [
     "reaction_compat",
     "report_comment",
     "report_post",
+    "report_user",
     "review_moderated_content",
     "scan_content",
+    "update_spam_keyword",
     "update_comment",
     "update_post",
     "upsert_comment_reaction",

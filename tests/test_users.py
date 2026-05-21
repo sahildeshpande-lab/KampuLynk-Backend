@@ -98,7 +98,11 @@ def test_follow_block_report_and_lynkup(client, auth_headers):
     assert res.status_code == 200
 
     # Report
-    res = client.post(f"/users/{user_b}/report", headers=auth_headers(token_a))
+    res = client.patch(
+        f"/users/{user_b}/report",
+        headers=auth_headers(token_a),
+        json={"reason": "harassment", "description": "abusive messages"},
+    )
     assert res.status_code == 200
 
     # LynkUp connect via accept

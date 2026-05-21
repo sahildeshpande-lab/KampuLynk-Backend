@@ -22,6 +22,7 @@ ReportReason = Literal[
     "spam", "harassment", "hate_speech", "misinformation",
     "violence", "nudity", "copyright", "other"
 ]
+SpamKeywordType = Literal["spam", "profanity"]
 EMAIL_PATTERN = r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
 EMAIL_EXAMPLE = "john@university.edu"
 PROFILE_PHOTO_EXAMPLE = "https://kampulynk-user-media.s3.amazonaws.com/users/sample/profile.png"
@@ -479,6 +480,11 @@ class ReportCommentRequest(CamelModel):
     description: str | None = Field(default=None, max_length=1000)
 
 
+class ReportUserRequest(CamelModel):
+    reason: ReportReason
+    description: str | None = Field(default=None, max_length=1000)
+
+
 class CommentCreateRequest(CamelModel):
     content: str = Field(min_length=1, max_length=2000)
     parentCommentId: str | None = None
@@ -511,6 +517,18 @@ class AdminReviewContentActionRequest(CamelModel):
     type: ReviewContentType
     action: ModerationAction
     note: str | None = Field(default=None, max_length=500)
+
+
+class SpamKeywordCreateRequest(CamelModel):
+    keyword: str = Field(min_length=1, max_length=255)
+    type: SpamKeywordType
+    isActive: bool = True
+
+
+class SpamKeywordUpdateRequest(CamelModel):
+    keyword: str | None = Field(default=None, min_length=1, max_length=255)
+    type: SpamKeywordType | None = None
+    isActive: bool | None = None
 
 
 class DateDauItem(CamelModel):
