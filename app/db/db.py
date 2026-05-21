@@ -81,6 +81,7 @@ def migrate_legacy_users_table():
             "alter table users add column if not exists academic_interests json not null default '[]'::json",
             "alter table users add column if not exists graduation_date varchar(7)",
             "alter table users add column if not exists location varchar(255)",
+            "alter table users add column if not exists country varchar(120)",
             "alter table users add column if not exists profile_visibility varchar(30) not null default 'public'",
             "alter table users add column if not exists completeness_score integer not null default 0",
             """alter table users add column if not exists notification_preferences json not null default '{"email": true, "push": true, "inApp": true}'::json""",
@@ -106,6 +107,7 @@ def migrate_legacy_users_table():
             "create index if not exists ix_users_major on users (major)",
             "create index if not exists ix_users_minor on users (minor)",
             "create index if not exists ix_users_education_level on users (education_level)",
+            "create index if not exists ix_users_country on users (country)",
         ]
         for statement in statements:
             connection.execute(text(statement))

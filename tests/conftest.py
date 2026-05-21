@@ -1,4 +1,5 @@
 import os
+import sys
 import tempfile
 import uuid
 from pathlib import Path
@@ -10,6 +11,9 @@ from sqlalchemy.orm import sessionmaker
 
 test_db_path = Path(tempfile.gettempdir()) / f"test_db_{uuid.uuid4().hex}.db"
 os.environ["DATABASE_URL"] = f"sqlite:///{test_db_path.as_posix()}"
+backend_root = Path(__file__).resolve().parents[1]
+if str(backend_root) not in sys.path:
+    sys.path.insert(0, str(backend_root))
 
 from app.main import app, Base, engine
 

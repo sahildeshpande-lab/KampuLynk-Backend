@@ -25,6 +25,7 @@ class User(Base):
     legacy_academic_interests = Column("academic_interests", JSON, default=list, nullable=False)
     graduation_date = Column(String(7), nullable=True)
     location = Column(String(255), nullable=True)
+    country = Column(String(120), nullable=True, index=True)
     profile_visibility = Column(String(30), default="private", nullable=False)
     completeness_score = Column(Integer, default=0, nullable=False)
     legacy_notification_preferences = Column(
@@ -177,6 +178,36 @@ class UserNotification(Base):
     read_at = Column(DateTime(timezone=True), nullable=True)
 
     user = relationship("User", back_populates="notifications")
+
+
+class UserActivity(Base):
+    __tablename__ = "user_activities"
+    __table_args__ = (
+        Index("ix_user_activities_created_at_user_id", "created_at", "user_id"),
+    )
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), index=True)
+    user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    activity_type = Column(String(50), nullable=False, index=True)
+    activity_metadata = Column("metadata", JSON, default=dict, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
+
+    user = relationship("User")
+
+
+class DailyAnalytics(Base):
+    __tablename__ = "daily_analytics"
+    __table_args__ = (
+        UniqueConstraint("date", name="uq_daily_analytics_date"),
+    )
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), index=True)
+    date = Column(Date, nullable=False, index=True)
+    dau = Column(Integer, default=0, nullable=False)
+    new_users = Column(Integer, default=0, nullable=False)
+    total_users = Column(Integer, default=0, nullable=False)
+    total_posts = Column(Integer, default=0, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
 class NotificationType(Base):

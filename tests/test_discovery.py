@@ -119,3 +119,71 @@ def test_search_username_support(client):
     res = client.get("/discovery/users/search", params={"username": "alice_user123"})
     assert res.status_code == 200
     assert any(item["fullName"] == "Alice User" for item in res.json()["data"]["items"])
+
+
+def test_user_recommendations_requires_auth(client):
+    res = client.get("/discovery/users/recommendations")
+    assert res.status_code == 401
+
+
+def test_user_recommendations_rank_by_mutuals_and_paginate(client, auth_headers):
+    token_a, user_a = _get_token(client, "reco_a@test.com", full_name="Reco A")
+    token_b, user_b = _get_token(client, "reco_b@test.com", full_name="Reco B")
+    token_c, user_c = _get_token(client, "reco_c@test.com", full_name="Reco C")
+    token_d, user_d = _get_token(client, "reco_d@test.com", full_name="Reco D")
+    token_e, user_e = _get_token(client, "reco_e@test.com", full_name="Reco E")
+
+    client.post(f"/users/{user_b}/lynkup/request", headers=auth_headers(token_a))
+    client.post(f"/users/{user_a}/lynkup/request", headers=auth_headers(token_b))
+    client.post(f"/users/{user_c}/lynkup/request", headers=auth_headers(token_a))
+    client.post(f"/users/{user_a}/lynkup/request", headers=auth_headers(token_c))
+
+    client.post(f"/users/{user_d}/lynkup/request", headers=auth_headers(token_b))
+    client.post(f"/users/{user_b}/lynkup/request", headers=auth_headers(token_d))
+    client.post(f"/users/{user_e}/lynkup/request", headers=auth_headers(token_b))
+    client.post(f"/users/{user_b}/lynkup/request", headers=auth_headers(token_e))
+    client.post(f"/users/{user_e}/lynkup/request", headers=auth_headers(token_c))
+    client.post(f"/users/{user_c}/lynkup/request", headers=auth_headers(token_e))
+
+    res = client.get("/discovery/users/recommendations?limit=1&offset=0", headers=auth_headers(token_a))
+    assert res.status_code == 200
+    body = res.json()["data"]
+    assert body["limit"] == 1
+    assert body["offset"] == 0
+    assert body["total"] >= 2
+    assert len(body["items"]) == 1
+    assert body["items"][0]["id"] in {user_d, user_e}
+    assert body["items"][0]["mutualConnections"] >= 1
+
+
+def test_post_recommendations_from_academic_interests(client, auth_headers):
+    token_reader, _ = _get_token(client, "post_reco_reader@test.com", full_name="Reader")
+    token_writer_match, _ = _get_token(client, "post_reco_writer_match@test.com", full_name="Writer Match")
+    token_writer_other, _ = _get_token(client, "post_reco_writer_other@test.com", full_name="Writer Other")
+
+    _set_interests(client, token_reader, ["AI", "Robotics"])
+    _set_interests(client, token_writer_match, ["AI"])
+    _set_interests(client, token_writer_other, ["History"])
+
+    match_post = client.post(
+        "/posts",
+        headers=auth_headers(token_writer_match),
+        json={"content": "Post for AI readers", "status": "published"},
+    )
+    assert match_post.status_code == 201
+    match_id = match_post.json()["data"]["id"]
+
+    other_post = client.post(
+        "/posts",
+        headers=auth_headers(token_writer_other),
+        json={"content": "Unrelated post", "status": "published"},
+    )
+    assert other_post.status_code == 201
+    other_id = other_post.json()["data"]["id"]
+
+    res = client.get("/discovery/posts/recommendations?limit=20&offset=0", headers=auth_headers(token_reader))
+    assert res.status_code == 200
+    body = res.json()["data"]
+    ids = [item["id"] for item in body["items"]]
+    assert match_id in ids
+    assert other_id not in ids

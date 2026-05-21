@@ -352,6 +352,243 @@ curl -X POST "http://127.0.0.1:8000/auth/logout" \
 { "status": false, "message": "Missing bearer token", "data": null }
 ```
 
+## 7] Posts
+
+### Media Field Note
+
+- Canonical field for post files: `media`
+- Legacy alias still accepted: `attachments`
+- If both are sent, backend uses `media`
+- Response includes both for backward compatibility; clients should read/write `media`
+
+### POST /posts
+
+**Endpoint:** `POST /posts`
+
+**Request (recommended):**
+```json
+{
+  "content": "Research update from today",
+  "status": "published",
+  "visibility": "public",
+  "engagementEnabled": true,
+  "contentFormat": "rich_text",
+  "richTextHtml": "<p>Research update from today</p>",
+  "media": [
+    {
+      "type": "image",
+      "url": "https://cdn.example.com/posts/sample.jpg",
+      "name": "sample.jpg",
+      "contentType": "image/jpeg",
+      "sizeBytes": 123456,
+      "metadata": {}
+    }
+  ],
+  "hashtags": ["#ai"],
+  "topicTags": ["research"]
+}
+```
+
+**Notes:**
+- `status` controls draft/publish: `published` or `draft`
+- content gate checks run for publish flow
+
+### PATCH /posts/{postId}
+
+**Endpoint:** `PATCH /posts/{postId}`
+
+**Request (partial):**
+```json
+{
+  "status": "published",
+  "content": "Final revised post content",
+  "media": []
+}
+```
+
+### POST /posts/{postId}/rescan
+
+Manual re-scan for edited content.
+
+**Endpoint:** `POST /posts/{postId}/rescan`
+
+### Engagement Endpoints
+
+- `POST /posts/{postId}/reactions`
+- `DELETE /posts/{postId}/reactions`
+- `POST /posts/{postId}/comments`
+- `POST /comments/{commentId}/replies`
+- `POST /posts/{postId}/repost`
+
+### POST /posts/{postId}/reactions
+
+Create or update a user reaction for a post.
+
+**Endpoint:** `POST /posts/{postId}/reactions`
+
+**Request:**
+```json
+{ "reactionType": "like" }
+```
+
+**Supported `reactionType` values:**
+- `like`
+- `love`
+- `celebrate`
+- `insightful`
+- `curious`
+- `support`
+- `remove like` (or `remove_like`) to remove an existing like using this same endpoint
+
+**Business validations:**
+- One active reaction per user per post.
+- If already liked and request is `{"reactionType":"like"}`, API returns 400 with message: `Already liked this post`.
+- If `reactionType = comment`, API returns 400 and client must use `POST /posts/{postId}/comments`.
+- If `reactionType = repost`, API returns 400 and client must use `POST /posts/{postId}/repost`.
+
+**Successful Response (200):**
+```json
+{
+  "status": true,
+  "message": "Reaction updated",
+  "data": {
+    "likeCount": 1,
+    "reactions": { "like": 1 }
+  }
+}
+```
+
+**Unsuccessful Response (400 - duplicate like):**
+```json
+{
+  "status": false,
+  "message": "Already liked this post",
+  "data": null
+}
+```
+
+### DELETE /posts/{postId}/reactions
+
+Remove current user's reaction from the post.
+
+**Endpoint:** `DELETE /posts/{postId}/reactions`
+
+**Successful Response (200):**
+```json
+{
+  "status": true,
+  "message": "Reaction deleted",
+  "data": {
+    "likeCount": 0,
+    "reactions": {}
+  }
+}
+```
+
+### PATCH /posts/{postId}/report
+
+Report a post for moderation review.
+
+**Endpoint:** `PATCH /posts/{postId}/report`
+
+**Request:**
+```json
+{
+  "reason": "spam",
+  "description": "optional details"
+}
+```
+
+**Business validations:**
+- Users cannot report their own post.
+- Same user can report a given post only once.
+
+**Successful Response (200):**
+```json
+{ "status": true, "message": "Post reported", "data": null }
+```
+
+**Unsuccessful Response (400 - duplicate report):**
+```json
+{ "status": false, "message": "You already reported this post", "data": null }
+```
+
+### PATCH /comments/{commentId}/report
+
+Report a comment for moderation review.
+
+**Endpoint:** `PATCH /comments/{commentId}/report`
+
+**Request:**
+```json
+{
+  "reason": "harassment",
+  "description": "optional details"
+}
+```
+
+**Business validations:**
+- Users cannot report their own comment.
+- Same user can report a given comment only once.
+
+**Successful Response (200):**
+```json
+{ "status": true, "message": "Comment reported", "data": null }
+```
+
+**Unsuccessful Response (400 - duplicate report):**
+```json
+{ "status": false, "message": "You already reported this comment", "data": null }
+```
+
+### Admin Moderation Delete Behavior
+
+When admin reviews reported post content and chooses `delete` from moderation review:
+- Post is **soft deleted / archived** (not hard deleted).
+- Post fields are updated as:
+  - `moderationStatus = "Deleted by admin"`
+  - `moderationReasons` populated from moderation queue reasons
+  - `archivedAt` set to deletion timestamp
+  - `deletedAt` set to deletion timestamp
+  - `status = "archived"`
+
+### POST /posts/{postId}/repost
+
+Create a repost for the current user.
+
+**Endpoint:** `POST /posts/{postId}/repost`
+
+**Request:**
+```json
+{ "quote": "Loved the content" }
+```
+
+**Business validations:**
+- A user can repost a given post only once.
+- Second repost attempt by the same user for the same post returns 400.
+
+**Successful Response (201):**
+```json
+{
+  "status": true,
+  "message": "Post reposted",
+  "data": {
+    "id": "REPOST_ID",
+    "postId": "POST_ID",
+    "quote": "Loved the content"
+  }
+}
+```
+
+**Unsuccessful Response (400 - duplicate repost):**
+```json
+{
+  "status": false,
+  "message": "Already reposted this post",
+  "data": null
+}
+```
+
 ## 2] User Management
 
 ### GET /users/me
@@ -917,7 +1154,92 @@ curl -X PATCH "http://127.0.0.1:8000/notifications/NOTIFICATION_ID/read" \
 
 ## 4] Admin - User Management
 
-Admin APIs require a user with `role = "admin"`.
+Admin APIs require an authenticated admin user.
+
+Allowed admin roles:
+- `superadmin`
+- `moderator`
+- `viewer`
+
+Non-admin users receive `403 Forbidden`. Missing/invalid tokens receive `401 Unauthorized`.
+
+## 4] Admin - Analytics
+
+### GET /admin/analytics/dau-trend
+
+Admin-only DAU (Daily Active Users) trend data.
+
+**Endpoint:** `GET /admin/analytics/dau-trend?days=7&start_date=YYYY-MM-DD&end_date=YYYY-MM-DD`
+
+**Query Params (optional):**
+- `days` (default `7`, min `1`, max `90`)
+- `start_date` (`YYYY-MM-DD`)
+- `end_date` (`YYYY-MM-DD`)
+
+**cURL:**
+```bash
+curl -X GET "http://127.0.0.1:8000/admin/analytics/dau-trend?days=7" \
+  -H "Authorization: Bearer ADMIN_ACCESS_TOKEN"
+```
+
+**Successful Response (200):**
+```json
+{
+  "status": true,
+  "message": "DAU trend fetched",
+  "data": {
+    "today_dau": 0,
+    "yesterday_dau": 0,
+    "growth_percentage": 0.0,
+    "trend": [
+      { "date": "2026-05-12", "dau": 0 }
+    ],
+    "range": { "start_date": "2026-05-12", "end_date": "2026-05-18" }
+  }
+}
+```
+
+### GET /admin/analytics/dashboard
+
+Admin analytics dashboard payload (summary + DAU trend + new user trend + demographics).
+
+**Endpoint:** `GET /admin/analytics/dashboard?days=7&start_date=YYYY-MM-DD&end_date=YYYY-MM-DD&top_limit=5`
+
+**Query Params (optional):**
+- `days` (default `7`, min `1`, max `90`)
+- `start_date` (`YYYY-MM-DD`)
+- `end_date` (`YYYY-MM-DD`)
+- `top_limit` (default `5`, min `1`, max `20`)
+
+**cURL:**
+```bash
+curl -X GET "http://127.0.0.1:8000/admin/analytics/dashboard?days=7&top_limit=5" \
+  -H "Authorization: Bearer ADMIN_ACCESS_TOKEN"
+```
+
+**Successful Response (200):**
+```json
+{
+  "status": true,
+  "message": "Admin analytics dashboard fetched",
+  "data": {
+    "summary": {
+      "total_users": 0,
+      "today_dau": 0,
+      "yesterday_dau": 0,
+      "dau_growth_percentage": 0.0,
+      "today_new_users": 0,
+      "new_user_growth_percentage": 0.0
+    },
+    "dau_trend": [{ "date": "2026-05-12", "dau": 0 }],
+    "new_user_trend": [{ "date": "2026-05-12", "new_users": 0 }],
+    "top_universities": [{ "university": "MIT", "count": 0 }],
+    "country_distribution": [{ "country": "USA", "count": 0 }],
+    "top_majors": [{ "major": "CS", "count": 0 }],
+    "range": { "start_date": "2026-05-12", "end_date": "2026-05-18" }
+  }
+}
+```
 
 ### POST /auth/admin/signup
 

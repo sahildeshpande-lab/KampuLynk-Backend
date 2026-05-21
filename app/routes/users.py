@@ -3,13 +3,15 @@ from sqlalchemy.orm import Session
 
 from ..db.db import get_db
 from ..models.model import User, UserSession
-from ..models.schemas import ApiResponse, ChangePasswordRequest, ProfileVisibilityUpdate, UserUpdate
+from ..models.schemas import ApiResponse, ChangePasswordRequest, ProfileVisibilityUpdate, ReportUserRequest, UserUpdate
+from ..services import post_service
 from .shared import (
     _apply_user_update,
     _hash_password,
     _is_connected,
     _public_user,
     _user_to_schema,
+    _verify_password,
     api_response,
     get_current_user,
     get_current_user_optional,
@@ -56,7 +58,7 @@ def change_password(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    if current_user.login_type != "email" or current_user.password_hash != _hash_password(payload.currentPassword):
+    if current_user.login_type != "email" or not _verify_password(payload.currentPassword, current_user.password_hash):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid current password")
     current_user.password_hash = _hash_password(payload.newPassword)
     db.commit()
@@ -138,13 +140,17 @@ def unblock_user(userId: str, current_user: User = Depends(get_current_user), db
     return api_response("User unblocked", {"userId": userId})
 
 
-@router.post("/users/{userId}/report", response_model=ApiResponse)
-def report_user(userId: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    target = db.query(User).filter(User.id == userId, User.is_active.is_(True)).first()
-    if not target:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-    if userId == current_user.id:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot report yourself")
+@router.patch("/users/{userId}/report", response_model=ApiResponse)
+def report_user(
+    userId: str,
+    payload: ReportUserRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    reasons = [payload.reason]
+    if payload.description:
+        reasons.append(payload.description.strip()[:200])
+    post_service.report_user(db, current_user, userId, reasons)
     current_user.reported_user_ids = list(dict.fromkeys((current_user.reported_user_ids or []) + [userId]))
     db.commit()
     return api_response("User reported", {"userId": userId})

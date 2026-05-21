@@ -6,7 +6,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.staticfiles import StaticFiles
 
-from .db.db import engine, migrate_legacy_users_table
+from .db.db import engine, ensure_platform_defaults, migrate_legacy_users_table
 from .models.model import Base
 from .routes.admin import router as admin_router
 from .routes.auth import router as auth_router
@@ -24,6 +24,7 @@ from .services.email_service import (
 
 migrate_legacy_users_table()
 Base.metadata.create_all(bind=engine)
+ensure_platform_defaults()
 
 AUTH_TAG = "1] Authentication"
 USER_TAG = "2] User Management"

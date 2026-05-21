@@ -1,14 +1,13 @@
-import hashlib
-import hmac
-import json
 import os
 import secrets
-import time
-from base64 import urlsafe_b64decode, urlsafe_b64encode
 from datetime import datetime, timedelta, timezone
 from typing import Iterable
 
-from fastapi import Depends, Header, HTTPException, status
+import jwt
+from fastapi import Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordBearer
+from jwt.exceptions import InvalidTokenError
+from pwdlib import PasswordHash
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -23,60 +22,73 @@ from ..models.model import (
 from ..models.schemas import AdminUserCreate, SignupRequest, UserUpdate
 from ..services import invitation_service
 
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/token", auto_error=False)
+password_hash = PasswordHash.recommended()
+
 
 def api_response(message: str, data=None, ok: bool = True) -> dict:
     return {"status": ok, "message": message, "data": data}
 
 
 def _hash_password(password: str) -> str:
-    return hashlib.sha256(password.encode("utf-8")).hexdigest()
+    return password_hash.hash(password)
+
+
+def _verify_password(password: str, stored_hash: str | None) -> bool:
+    if not stored_hash:
+        return False
+    try:
+        return password_hash.verify(password, stored_hash)
+    except Exception:
+        return False
+
+
+def _password_needs_rehash(stored_hash: str | None) -> bool:
+    if not stored_hash:
+        return True
+    if not hasattr(password_hash, "check_needs_rehash"):
+        return False
+    try:
+        return password_hash.check_needs_rehash(stored_hash)
+    except Exception:
+        return True
 
 
 def _token() -> str:
     return secrets.token_urlsafe(32)
 
 
-def _base64url_encode(raw: bytes) -> str:
-    return urlsafe_b64encode(raw).rstrip(b"=").decode("ascii")
+def _jwt_secret() -> str:
+    return os.getenv("JWT_SECRET") or os.getenv("SECRET_KEY") or "dev-secret-change-me-32-bytes-minimum"
 
 
-def _base64url_decode(data: str) -> bytes:
-    padding = "=" * (-len(data) % 4)
-    return urlsafe_b64decode((data + padding).encode("ascii"))
+def _jwt_algorithm() -> str:
+    algorithm = os.getenv("JWT_ALGORITHM", "HS256").strip().upper()
+    supported = {"HS256", "HS384", "HS512"}
+    if algorithm not in supported:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Unsupported JWT_ALGORITHM '{algorithm}'. Supported values: {', '.join(sorted(supported))}",
+        )
+    return algorithm
 
 
-def _jwt_secret() -> bytes:
-    value = os.getenv("JWT_SECRET") or os.getenv("SECRET_KEY") or "dev-secret"
-    return value.encode("utf-8")
+def _jwt_expire_minutes() -> int:
+    try:
+        return int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "60"))
+    except ValueError:
+        return 60
 
 
 def _jwt_encode(payload: dict) -> str:
-    header = {"alg": "HS256", "typ": "JWT"}
-    header_b64 = _base64url_encode(json.dumps(header, separators=(",", ":"), sort_keys=True).encode("utf-8"))
-    payload_b64 = _base64url_encode(json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8"))
-    signing_input = f"{header_b64}.{payload_b64}".encode("ascii")
-    signature = hmac.new(_jwt_secret(), signing_input, hashlib.sha256).digest()
-    sig_b64 = _base64url_encode(signature)
-    return f"{header_b64}.{payload_b64}.{sig_b64}"
+    return jwt.encode(payload, _jwt_secret(), algorithm=_jwt_algorithm())
 
 
 def _jwt_decode(token: str) -> dict:
     try:
-        header_b64, payload_b64, sig_b64 = token.split(".", 2)
-    except ValueError:
+        return jwt.decode(token, _jwt_secret(), algorithms=[_jwt_algorithm()])
+    except InvalidTokenError:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
-
-    signing_input = f"{header_b64}.{payload_b64}".encode("ascii")
-    expected_sig = hmac.new(_jwt_secret(), signing_input, hashlib.sha256).digest()
-    actual_sig = _base64url_decode(sig_b64)
-    if not hmac.compare_digest(expected_sig, actual_sig):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
-
-    payload = json.loads(_base64url_decode(payload_b64))
-    exp = payload.get("exp")
-    if exp is not None and int(exp) < int(time.time()):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token expired")
-    return payload
 
 def _generate_otp_code() -> str:
     return f"{secrets.randbelow(1_000_000):06d}"
@@ -234,14 +246,21 @@ def _public_user(user: User) -> dict:
     }
 
 
+def _credentials_exception(detail: str = "Could not validate credentials") -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail=detail,
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+
 def get_current_user_optional(
-    authorization: str | None = Header(default=None),
+    access_token: str | None = Depends(oauth2_scheme),
     db: Session = Depends(get_db),
 ) -> User | None:
-    if not authorization or not authorization.startswith("Bearer "):
+    if not access_token:
         return None
-    token = authorization.removeprefix("Bearer ").strip()
-    payload = _jwt_decode(token)
+    payload = _jwt_decode(access_token)
     session_id = payload.get("sid")
     if not session_id:
         return None
@@ -269,19 +288,18 @@ def _get_user_or_404(db: Session, user_id: str) -> User:
 
 
 def _current_session(
-    authorization: str | None = Header(default=None),
+    access_token: str | None = Depends(oauth2_scheme),
     db: Session = Depends(get_db),
 ) -> UserSession:
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing bearer token")
-    token = authorization.removeprefix("Bearer ").strip()
-    payload = _jwt_decode(token)
+    if not access_token:
+        raise _credentials_exception("Missing bearer token")
+    payload = _jwt_decode(access_token)
     session_id = payload.get("sid")
     if not session_id:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid session")
+        raise _credentials_exception("Invalid session")
     session = db.query(UserSession).filter(UserSession.id == session_id, UserSession.is_active.is_(True)).first()
     if not session or not session.user or not session.user.is_active:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid session")
+        raise _credentials_exception("Invalid session")
     return session
 
 
@@ -332,15 +350,15 @@ def _apply_user_update(user: User, payload: UserUpdate) -> User:
 
 
 def _auth_payload(session: UserSession, user: User) -> dict:
-    ttl_minutes = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "60"))
-    now = int(time.time())
+    ttl_minutes = _jwt_expire_minutes()
+    now = datetime.now(timezone.utc)
     access_token = _jwt_encode(
         {
             "sub": user.id,
             "sid": session.id,
             "role": user.role,
             "iat": now,
-            "exp": now + (ttl_minutes * 60),
+            "exp": now + timedelta(minutes=ttl_minutes),
         }
     )
     return {

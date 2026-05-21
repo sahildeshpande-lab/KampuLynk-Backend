@@ -1,5 +1,6 @@
 import pytest
 from app import main
+from app.routes.shared import _hash_password, _verify_password
 
 @pytest.fixture(autouse=True)
 def mock_emails(monkeypatch):
@@ -83,6 +84,96 @@ def test_login(client):
     response = client.post("/auth/login", json={"email": email, "password": password})
     assert response.status_code == 200
     assert "accessToken" in response.json()["data"]
+
+
+def test_same_password_gets_unique_salted_hashes():
+    password = "StrongPass123"
+    first = _hash_password(password)
+    second = _hash_password(password)
+
+    assert first != second
+    assert _verify_password(password, first)
+    assert _verify_password(password, second)
+
+
+def test_user_token_unlocks_user_routes_but_not_admin_routes(client, auth_headers):
+    signup = client.post("/auth/signup", json={
+        "fullName": "Regular User",
+        "email": "regular.user@university.edu",
+        "password": "StrongPass123",
+        "consentGiven": True,
+        "university": "MIT",
+        "major": "CS",
+        "educationLevel": "bachelors"
+    })
+    token = signup.json()["data"]["accessToken"]
+
+    user_response = client.get("/users/me", headers=auth_headers(token))
+    admin_response = client.get("/users/", headers=auth_headers(token))
+
+    assert user_response.status_code == 200
+    assert admin_response.status_code == 403
+
+
+def test_oauth2_password_form_user_login(client, auth_headers):
+    email = "oauth.user@university.edu"
+    password = "StrongPass123"
+    client.post("/auth/signup", json={
+        "fullName": "OAuth User",
+        "email": email,
+        "password": password,
+        "consentGiven": True,
+        "university": "MIT",
+        "major": "CS",
+        "educationLevel": "bachelors"
+    })
+
+    response = client.post("/auth/token", data={"username": email, "password": password})
+    token = response.json()["access_token"]
+    me = client.get("/users/me", headers=auth_headers(token))
+
+    assert response.status_code == 200
+    assert response.json()["token_type"] == "bearer"
+    assert me.status_code == 200
+
+
+def test_admin_token_unlocks_admin_routes(client, auth_headers):
+    signup = client.post("/auth/admin/signup", json={
+        "fullName": "Route Admin",
+        "email": "route.admin@university.edu",
+        "password": "StrongPass123",
+        "consentGiven": True,
+        "university": "MIT",
+        "major": "CS",
+        "educationLevel": "bachelors"
+    })
+    token = signup.json()["data"]["accessToken"]
+
+    response = client.get("/users/", headers=auth_headers(token))
+
+    assert response.status_code == 200
+
+
+def test_oauth2_password_form_admin_login(client, auth_headers):
+    email = "oauth.admin@university.edu"
+    password = "StrongPass123"
+    client.post("/auth/admin/signup", json={
+        "fullName": "OAuth Admin",
+        "email": email,
+        "password": password,
+        "consentGiven": True,
+        "university": "MIT",
+        "major": "CS",
+        "educationLevel": "bachelors"
+    })
+
+    response = client.post("/auth/admin/token", data={"username": email, "password": password})
+    token = response.json()["access_token"]
+    users = client.get("/users/", headers=auth_headers(token))
+
+    assert response.status_code == 200
+    assert response.json()["token_type"] == "bearer"
+    assert users.status_code == 200
 
 def test_social_login(client):
     payload = {

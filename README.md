@@ -12,6 +12,7 @@ FastAPI backend for student platform user registration, authentication, profile 
 - Public user profile API
 - Multi-user notification APIs for email, in-app, and queued push delivery
 - Admin user list and admin user detail APIs
+- Admin analytics dashboard APIs
 - PostgreSQL database support
 - Swagger UI documentation
 
@@ -131,3 +132,4 @@ The Playwright API test starts a temporary local API server and uses a temporary
 - Push notifications are currently queued in notification delivery status; provider delivery can be connected when device tokens/APNs/FCM are added.
 - Signup creates users with `role: "user"`.
 - Admin APIs require `role: "admin"` in the database.
+- Admin APIs require a user with role in: `superadmin`, `moderator`, `viewer`.
