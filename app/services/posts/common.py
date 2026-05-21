@@ -46,29 +46,13 @@ def clean_mentions(values: list[str] | None, content: str = "") -> list[str]:
     return cleaned
 
 
-def extract_plain_text(content: str, rich_text_html: str | None, rich_text_json: dict[str, Any] | None) -> str:
-    if content:
-        return content.strip()
-    if rich_text_html:
-        text = re.sub(r"<[^>]+>", " ", rich_text_html)
-        return re.sub(r"\s+", " ", unescape(text)).strip()[:5000]
-    if rich_text_json:
-        parts: list[str] = []
-
-        def walk(value):
-            if isinstance(value, dict):
-                text = value.get("text")
-                if isinstance(text, str):
-                    parts.append(text)
-                for child in value.values():
-                    walk(child)
-            elif isinstance(value, list):
-                for child in value:
-                    walk(child)
-
-        walk(rich_text_json)
-        return re.sub(r"\s+", " ", " ".join(parts)).strip()[:5000]
-    return ""
+def extract_plain_text(
+    content: str,
+    rich_text_html: str | None = None,
+    rich_text_json: dict[str, Any] | None = None,
+) -> str:
+    # Rich text is not supported right now; keep parameters for backward compatibility.
+    return (content or "").strip()[:5000]
 
 
 def validate_media(attachments: list[PostAttachment] | None) -> list[dict]:

@@ -41,8 +41,6 @@ def test_create_feed_engage_and_repost(client):
             "content": "Research group meetup at 5",
             "status": "published",
             "engagementEnabled": True,
-            "contentFormat": "rich_text",
-            "richTextHtml": "<p>Research group meetup at 5</p>",
             "hashtags": ["#Research"],
             "topicTags": ["AI"],
             "attachments": [
@@ -118,7 +116,7 @@ def test_comments_are_limited_to_three_levels(client):
 
 def test_post_is_blocked_when_spam_or_profanity_detected(client):
     user_headers = _signup(client, "moderated.user@university.edu")
-    post = client.post("/posts", headers=user_headers, json={"content": "damn this post is rude"})
+    post = client.post("/posts", headers=user_headers, json={"content": "damn this post is rude", "status": "published"})
     assert post.status_code == 400
     assert "blocked by content safety checks" in post.json()["message"]
 
@@ -214,9 +212,8 @@ def test_rich_text_post_feed_edit_and_soft_delete(client):
         "/posts",
         headers=headers,
         json={
-            "content": "",
-            "contentFormat": "rich_text",
-            "richTextHtml": "<p>Hello <strong>LynkUp</strong> @mentor #Launch</p>",
+            "content": "Hello LynkUp @mentor #Launch",
+            "status": "published",
             "visibility": "connections_only",
             "hashtags": ["#Launch"],
             "mentions": ["mentor"],
@@ -264,10 +261,10 @@ def test_rich_text_post_feed_edit_and_soft_delete(client):
 
 def test_feed_cursor_uses_created_at_without_offset(client):
     headers = _signup(client, "cursor.user@university.edu")
-    first = client.post("/posts", headers=headers, json={"content": "older cursor post"})
+    first = client.post("/posts", headers=headers, json={"content": "older cursor post", "status": "published"})
     assert first.status_code == 201
     time.sleep(1.1)
-    second = client.post("/posts", headers=headers, json={"content": "newer cursor post"})
+    second = client.post("/posts", headers=headers, json={"content": "newer cursor post", "status": "published"})
     assert second.status_code == 201
 
     page_one = client.get("/feed?limit=1")

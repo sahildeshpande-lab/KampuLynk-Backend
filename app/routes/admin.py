@@ -1,6 +1,7 @@
 from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -28,7 +29,9 @@ from .shared import (
     _get_user_by_email,
     _get_user_or_404,
     _hash_password,
+    _password_needs_rehash,
     _user_to_schema,
+    _verify_password,
     api_response,
     get_admin_user,
 )
@@ -36,6 +39,16 @@ from .shared import (
 ADMIN_TAG = "4] Admin User Management"
 
 router = APIRouter(tags=[ADMIN_TAG])
+
+
+def _oauth2_token_payload(session: UserSession, user: User) -> dict:
+    payload = _auth_payload(session, user)
+    return {
+        "access_token": payload["accessToken"],
+        "token_type": "bearer",
+        "refresh_token": payload["refreshToken"],
+        "user": payload["user"],
+    }
 
 
 @router.get("/admin/analytics/dau-trend", response_model=ApiResponse)
@@ -175,14 +188,40 @@ def admin_signup(payload: SignupRequest, db: Session = Depends(get_db)):
 @router.post("/auth/admin/signin", response_model=ApiResponse)
 def admin_signin(payload: LoginRequest, db: Session = Depends(get_db)):
     user = _get_user_by_email(db, payload.email)
-    if not user or user.password_hash != _hash_password(payload.password):
+    if not user or not _verify_password(payload.password, user.password_hash):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password")
     if not user.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="User is inactive")
     if user.role not in {"superadmin", "moderator", "viewer"}:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
+    if _password_needs_rehash(user.password_hash):
+        user.password_hash = _hash_password(payload.password)
+        db.commit()
     session = _create_session(db, user)
     return api_response("Admin signin successful", _auth_payload(session, user))
+
+
+@router.post("/auth/admin/token")
+def admin_login_for_access_token(
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    db: Session = Depends(get_db),
+):
+    user = _get_user_by_email(db, form_data.username)
+    if not user or not _verify_password(form_data.password, user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect username or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    if not user.is_active:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="User is inactive")
+    if user.role not in {"superadmin", "moderator", "viewer"}:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
+    if _password_needs_rehash(user.password_hash):
+        user.password_hash = _hash_password(form_data.password)
+        db.commit()
+    session = _create_session(db, user)
+    return _oauth2_token_payload(session, user)
 
 
 @router.get("/users/", response_model=ApiResponse)

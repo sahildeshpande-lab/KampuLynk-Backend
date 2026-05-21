@@ -142,6 +142,8 @@ def migrate_legacy_users_table():
                 "alter table posts add column if not exists repost_count integer not null default 0",
                 "alter table posts add column if not exists is_flagged boolean not null default false",
                 "alter table posts add column if not exists report_count integer not null default 0",
+                "alter table posts drop column if exists rich_text_json",
+                "alter table posts drop column if exists rich_text_html",
                 "create index if not exists ix_posts_author_created_at on posts (author_id, created_at)",
                 "create index if not exists ix_posts_visibility on posts (visibility)",
                 "create index if not exists ix_posts_is_flagged on posts (is_flagged)",
@@ -149,6 +151,13 @@ def migrate_legacy_users_table():
             ]
             for statement in post_statements:
                 connection.execute(text(statement))
+
+            post_drafts_exists = connection.execute(
+                text("select to_regclass('public.post_drafts') is not null")
+            ).scalar()
+            if post_drafts_exists:
+                connection.execute(text("alter table post_drafts drop column if exists rich_text_json"))
+                connection.execute(text("alter table post_drafts drop column if exists rich_text_html"))
 
         post_domain_statements = [
             """

@@ -31,18 +31,14 @@ from .serialization import post_to_schema
 
 def apply_content(post: Post, payload: PostCreateRequest | PostUpdateRequest, partial: bool = False) -> None:
     content_format = payload.contentFormat if payload.contentFormat is not None else post.content_format
-    rich_text_json = payload.richTextJson if payload.richTextJson is not None else (post.rich_text_json if partial else None)
-    rich_text_html = payload.richTextHtml if payload.richTextHtml is not None else (post.rich_text_html if partial else None)
     content = payload.content if payload.content is not None else (post.body if partial else "")
-    plain_text = extract_plain_text(content or "", rich_text_html, rich_text_json)
+    plain_text = extract_plain_text(content or "")
     if not plain_text and getattr(payload, "status", post.status) == "published":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Post content is required")
 
     post.body = content or plain_text
     post.plain_text = plain_text
     post.content_format = content_format or "plain_text"
-    post.rich_text_json = rich_text_json
-    post.rich_text_html = rich_text_html
 
     if payload.linkPreview is not None:
         post.link_preview = payload.linkPreview.model_dump()

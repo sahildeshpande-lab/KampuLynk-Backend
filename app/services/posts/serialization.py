@@ -95,8 +95,6 @@ def post_to_schema(db: Session, post: Post, include_comments: bool = False, incl
         "visibility": post.visibility,
         "engagementEnabled": post.engagement_enabled,
         "contentFormat": post.content_format,
-        "richTextJson": post.rich_text_json,
-        "richTextHtml": post.rich_text_html,
         "attachments": media_to_schema(post),
         "media": media_to_schema(post),
         "linkPreview": post.link_preview,

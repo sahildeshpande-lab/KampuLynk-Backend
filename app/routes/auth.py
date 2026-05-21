@@ -2,6 +2,7 @@ import secrets
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
 from ..db.db import get_db
@@ -25,8 +26,10 @@ from .shared import (
     _create_user_from_payload,
     _get_user_by_email,
     _hash_password,
+    _password_needs_rehash,
     _otp_not_expired,
     _token,
+    _verify_password,
     _calculate_completeness,
     api_response,
     _current_session,
@@ -141,6 +144,29 @@ def _create_in_app_notification(
         delivery_status=delivery_status,
     )
     db.add(notification)
+
+
+def _authenticate_email_password(db: Session, email: str, password: str) -> User | None:
+    user = _get_user_by_email(db, email)
+    if not user or not _verify_password(password, user.password_hash):
+        return None
+    return user
+
+
+def _upgrade_password_hash_if_needed(db: Session, user: User, password: str) -> None:
+    if _password_needs_rehash(user.password_hash):
+        user.password_hash = _hash_password(password)
+        db.commit()
+
+
+def _oauth2_token_payload(session: UserSession, user: User) -> dict:
+    payload = _auth_payload(session, user)
+    return {
+        "access_token": payload["accessToken"],
+        "token_type": "bearer",
+        "refresh_token": payload["refreshToken"],
+        "user": payload["user"],
+    }
 
 
 @router.post("/auth/signup", response_model=ApiResponse, status_code=status.HTTP_201_CREATED)
@@ -280,16 +306,43 @@ def reset_password(payload: ResetPasswordRequest, db: Session = Depends(get_db))
 def login(payload: LoginRequest, request: Request, db: Session = Depends(get_db)):
     ip = _client_ip(request)
     _enforce_login_rate_limit(db, payload.email, ip)
-    user = _get_user_by_email(db, payload.email)
-    if not user or user.password_hash != _hash_password(payload.password):
+    user = _authenticate_email_password(db, payload.email, payload.password)
+    if not user:
         _register_login_failure(db, payload.email, ip)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password")
     if not user.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="User is inactive")
+    _upgrade_password_hash_if_needed(db, user, payload.password)
     _clear_login_rate_limit(db, payload.email, ip)
     session = _create_session(db, user)
     track_user_activity(db, user, "login", {"loginType": user.login_type})
     return api_response("Login successful", _auth_payload(session, user))
+
+
+@router.post("/auth/token")
+def login_for_access_token(
+    request: Request,
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    db: Session = Depends(get_db),
+):
+    email = form_data.username
+    ip = _client_ip(request)
+    _enforce_login_rate_limit(db, email, ip)
+    user = _authenticate_email_password(db, email, form_data.password)
+    if not user:
+        _register_login_failure(db, email, ip)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect username or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    if not user.is_active:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="User is inactive")
+    _upgrade_password_hash_if_needed(db, user, form_data.password)
+    _clear_login_rate_limit(db, email, ip)
+    session = _create_session(db, user)
+    track_user_activity(db, user, "login", {"loginType": user.login_type})
+    return _oauth2_token_payload(session, user)
 
 
 @router.post("/auth/social", response_model=ApiResponse)

@@ -11,6 +11,7 @@ from .shared import (
     _is_connected,
     _public_user,
     _user_to_schema,
+    _verify_password,
     api_response,
     get_current_user,
     get_current_user_optional,
@@ -57,7 +58,7 @@ def change_password(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    if current_user.login_type != "email" or current_user.password_hash != _hash_password(payload.currentPassword):
+    if current_user.login_type != "email" or not _verify_password(payload.currentPassword, current_user.password_hash):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid current password")
     current_user.password_hash = _hash_password(payload.newPassword)
     db.commit()

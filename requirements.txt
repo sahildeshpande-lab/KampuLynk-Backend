@@ -2,6 +2,9 @@ fastapi
 uvicorn[standard]
 sqlalchemy
 psycopg2-binary
+PyJWT
+pwdlib[argon2]
+python-multipart
 pytest
 pytest-cov
 pytest-asyncio

@@ -388,12 +388,10 @@ class LinkPreview(CamelModel):
 
 class PostCreateRequest(CamelModel):
     content: str = Field(default="", max_length=5000)
-    status: PostStatus = "published"
+    status: PostStatus = "draft"
     visibility: PostVisibility = "public"
     engagementEnabled: bool = True
     contentFormat: PostContentFormat = "plain_text"
-    richTextJson: dict[str, Any] | None = None
-    richTextHtml: str | None = Field(default=None, max_length=20000)
     # attachments: list[PostAttachment] = Field(
     #     default_factory=list,
     #     max_length=15,
@@ -416,8 +414,6 @@ class PostUpdateRequest(CamelModel):
     visibility: PostVisibility | None = None
     engagementEnabled: bool | None = None
     contentFormat: PostContentFormat | None = None
-    richTextJson: dict[str, Any] | None = None
-    richTextHtml: str | None = Field(default=None, max_length=20000)
     attachments: list[PostAttachment] | None = Field(
         default=None,
         max_length=15,
