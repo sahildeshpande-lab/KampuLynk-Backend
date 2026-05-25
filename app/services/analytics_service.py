@@ -281,8 +281,6 @@ def dashboard(
 ) -> dict:
     start_day, end_day = resolve_date_range(days=days, start_date=start_date, end_date=end_date)
 
-    # No scheduler exists in this project, so we materialize aggregates during reads
-    # for predictable dashboard performance on repeated calls.
     aggregate_daily_analytics(db, start_day, end_day)
     aggregate_lookup = _daily_aggregates_lookup(db, start_day, end_day)
 
