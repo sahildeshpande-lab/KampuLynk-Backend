@@ -1,7 +1,7 @@
 import os
 import secrets
 import string
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone , UTC
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import func
@@ -97,7 +97,8 @@ def invitations_sent_today(db: Session, originator_user_id: str) -> int:
 
 def email_invited_recently(db: Session, email: str) -> bool:
     normalized = email.strip().lower()
-    cutoff = (datetime.utcnow() - timedelta(days=INVITATION_BLOCK_EMAIL_DAYS))
+    cutoff = (datetime.now(UTC)  - timedelta(days=INVITATION_BLOCK_EMAIL_DAYS))
+    
     return (
         db.query(Invitation)
         .filter(func.lower(func.trim(Invitation.invited_email)) == normalized, Invitation.created_at >= cutoff)
