@@ -161,7 +161,7 @@ def signup_user(db: Session, payload: SignupRequest) -> dict:
     )
     db.commit()
     session = create_session(db, user)
-    return auth_payload(session, user)
+    return {**auth_payload(session, user), "emailSent": sent}
 
 
 def verify_user_otp(db: Session, payload: VerifyOTPRequest) -> dict:
@@ -190,7 +190,7 @@ def verify_user_otp(db: Session, payload: VerifyOTPRequest) -> dict:
         {"email": "sent" if sent else "failed", "inApp": "created", "push": "skipped"},
     )
     db.commit()
-    return {"email": user.email}
+    return {"email": user.email, "emailSent": sent}
 
 
 def resend_user_otp(db: Session, payload: ResendOTPRequest) -> dict:
@@ -208,7 +208,7 @@ def resend_user_otp(db: Session, payload: ResendOTPRequest) -> dict:
         {"email": "sent" if sent else "failed", "inApp": "created", "push": "skipped"},
     )
     db.commit()
-    return {"email": user.email}
+    return {"email": user.email, "emailSent": sent}
 
 
 def forgot_user_password(db: Session, payload: ForgotPasswordRequest) -> dict:
@@ -230,7 +230,7 @@ def forgot_user_password(db: Session, payload: ForgotPasswordRequest) -> dict:
         {"email": "sent" if sent else "failed", "inApp": "created", "push": "skipped"},
     )
     db.commit()
-    return {"email": payload.email}
+    return {"email": payload.email, "emailSent": sent}
 
 
 def reset_user_password(db: Session, payload: ResetPasswordRequest) -> dict:

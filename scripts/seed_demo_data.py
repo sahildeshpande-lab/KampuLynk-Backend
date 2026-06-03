@@ -39,7 +39,7 @@ DEFAULT_PASSWORD = "StrongPass123"
 
 def _seed_plan() -> list[SeedUser]:
     users: list[SeedUser] = [
-        SeedUser(
+        SeedUser( 
             full_name="=test_admin_Private",
             email="admin_private@demo.com",
             role="superadmin",

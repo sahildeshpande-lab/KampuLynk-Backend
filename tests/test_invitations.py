@@ -57,6 +57,32 @@ def test_invitation_block_same_email_7_days(client, auth_headers):
     assert second.status_code == 409
 
 
+def test_invitation_cannot_invite_self(client, auth_headers):
+    email = "self_inviter@university.edu"
+    token = _signup_user(client, email)
+
+    response = client.post("/invitations/send", json={"email": email}, headers=auth_headers(token))
+
+    assert response.status_code == 200
+    assert response.json()["detail"] == "User cannot invite itself"
+    assert response.json()["data"] == {}
+
+
+def test_invitation_cannot_invite_existing_user(client, auth_headers):
+    token = _signup_user(client, "existing_inviter@university.edu")
+    _signup_user(client, "existing_invitee@university.edu")
+
+    response = client.post(
+        "/invitations/send",
+        json={"email": "existing_invitee@university.edu"},
+        headers=auth_headers(token),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["detail"] == "User already exists"
+    assert response.json()["data"] == {}
+
+
 def test_invitation_daily_limit_enforced(client, auth_headers, monkeypatch):
     from app.services import invitation_service
 

@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.responses import RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -44,6 +44,24 @@ def send_invitation(
     if not user.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="User is inactive")
 
+    invited_email = payload.email.strip().lower()
+    if invited_email == user.email.strip().lower():
+        return JSONResponse(
+            status_code=status.HTTP_200_OK,
+            content={"status": True, "message": "Invitation skipped", "data": {}, "detail": "User cannot invite itself"},
+        )
+
+    existing_user = (
+        db.query(User)
+        .filter(func.lower(func.trim(User.email)) == invited_email)
+        .first()
+    )
+    if existing_user:
+        return JSONResponse(
+            status_code=status.HTTP_200_OK,
+            content={"status": True, "message": "Invitation skipped", "data": {}, "detail": "User already exists"},
+        )
+
     today_count = invitation_service.invitations_sent_today(db, user.id)
     daily_limit = invitation_service.INVITATION_DAILY_LIMIT
     if today_count >= daily_limit:
@@ -65,7 +83,7 @@ def send_invitation(
     invitation = Invitation(
         invitation_code_id=invite_code.id,
         originator_user_id=user.id,
-        invited_email=payload.email.strip().lower(),
+        invited_email=invited_email,
     )
     db.add(invitation)
     db.commit()
