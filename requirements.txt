@@ -12,3 +12,4 @@ httpx
 playwright
 pytest-playwright
 sendgrid
+firebase-admin

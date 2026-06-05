@@ -45,6 +45,7 @@ from .auth_utils import (
     user_to_schema,
     verify_password,
 )
+from .push_dispatcher import dispatch_queued_push_notifications
 
 
 def create_otp(db: Session, user: User) -> EmailOTP:
@@ -85,26 +86,37 @@ def create_in_app_notification(
     title: str,
     body: str,
     delivery_status: dict,
-) -> None:
+) -> UserNotification | None:
     preferences = user.notification_preferences
     allow_in_app = True if not preferences else bool(preferences.in_app)
-    if not allow_in_app:
-        return
+    allow_push = True if not preferences else bool(preferences.push)
+    if not allow_in_app and not allow_push:
+        return None
 
-    db.add(
-        UserNotification(
-            user_id=user.id,
-            notification_type=notification_type,
-            target_type="direct",
-            topic=None,
-            template_key=None,
-            title=title,
-            body=body,
-            html_body=None,
-            channels={"email": False, "inApp": True, "push": False},
-            delivery_status=delivery_status,
-        )
+    effective_delivery_status = dict(delivery_status)
+    effective_delivery_status["inApp"] = "created" if allow_in_app else "skipped"
+    effective_delivery_status["push"] = "queued" if allow_push else "skipped"
+    notification = UserNotification(
+        user_id=user.id,
+        notification_type=notification_type,
+        target_type="direct",
+        topic=None,
+        template_key=None,
+        title=title,
+        body=body,
+        html_body=None,
+        channels={"email": False, "inApp": allow_in_app, "push": allow_push},
+        delivery_status=effective_delivery_status,
     )
+    db.add(notification)
+    return notification
+
+
+def dispatch_created_push_notification(db: Session, notification: UserNotification | None) -> None:
+    if not notification or not (notification.channels or {}).get("push"):
+        return
+    db.refresh(notification)
+    dispatch_queued_push_notifications(db, [notification.id])
 
 
 def authenticate_email_password(db: Session, email: str, password: str) -> User | None:
@@ -151,7 +163,7 @@ def signup_user(db: Session, payload: SignupRequest) -> dict:
     db.refresh(user)
     otp = create_otp(db, user)
     sent = send_otp(user.email, otp.code)
-    create_in_app_notification(
+    notification = create_in_app_notification(
         db,
         user,
         "resend-otp",
@@ -160,6 +172,7 @@ def signup_user(db: Session, payload: SignupRequest) -> dict:
         {"email": "sent" if sent else "failed", "inApp": "created", "push": "skipped"},
     )
     db.commit()
+    dispatch_created_push_notification(db, notification)
     session = create_session(db, user)
     return {**auth_payload(session, user), "emailSent": sent}
 
@@ -181,7 +194,7 @@ def verify_user_otp(db: Session, payload: VerifyOTPRequest) -> dict:
     user.is_email_verified = True
     db.commit()
     sent = send_account_created(user.email, user.full_name)
-    create_in_app_notification(
+    notification = create_in_app_notification(
         db,
         user,
         "user-creation",
@@ -190,6 +203,7 @@ def verify_user_otp(db: Session, payload: VerifyOTPRequest) -> dict:
         {"email": "sent" if sent else "failed", "inApp": "created", "push": "skipped"},
     )
     db.commit()
+    dispatch_created_push_notification(db, notification)
     return {"email": user.email, "emailSent": sent}
 
 
@@ -199,7 +213,7 @@ def resend_user_otp(db: Session, payload: ResendOTPRequest) -> dict:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     otp = create_otp(db, user)
     sent = send_otp(user.email, otp.code)
-    create_in_app_notification(
+    notification = create_in_app_notification(
         db,
         user,
         "resend-otp",
@@ -208,6 +222,7 @@ def resend_user_otp(db: Session, payload: ResendOTPRequest) -> dict:
         {"email": "sent" if sent else "failed", "inApp": "created", "push": "skipped"},
     )
     db.commit()
+    dispatch_created_push_notification(db, notification)
     return {"email": user.email, "emailSent": sent}
 
 
@@ -221,7 +236,7 @@ def forgot_user_password(db: Session, payload: ForgotPasswordRequest) -> dict:
     db.commit()
     db.refresh(otp)
     sent = send_password_reset(user.email, otp.code)
-    create_in_app_notification(
+    notification = create_in_app_notification(
         db,
         user,
         "password-reset",
@@ -230,6 +245,7 @@ def forgot_user_password(db: Session, payload: ForgotPasswordRequest) -> dict:
         {"email": "sent" if sent else "failed", "inApp": "created", "push": "skipped"},
     )
     db.commit()
+    dispatch_created_push_notification(db, notification)
     return {"email": payload.email, "emailSent": sent}
 
 

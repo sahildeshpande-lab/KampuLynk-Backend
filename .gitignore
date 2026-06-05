@@ -52,3 +52,8 @@ Desktop.ini
 *.db
 *.sqlite
 *.sqlite3
+
+
+# firebase
+secrets/
+*.json

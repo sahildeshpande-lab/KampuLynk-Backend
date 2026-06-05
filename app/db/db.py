@@ -301,6 +301,28 @@ def migrate_legacy_users_table():
         for statement in daily_analytics_statements:
             connection.execute(text(statement))
 
+        user_device_statements = [
+            """
+            create table if not exists user_devices (
+                id varchar(36) primary key,
+                user_id varchar(36) not null references users(id) on delete cascade,
+                device_token varchar(4096) not null,
+                platform varchar(30) not null,
+                device_name varchar(150),
+                is_active boolean not null default true,
+                created_at timestamp with time zone not null default now(),
+                updated_at timestamp with time zone not null default now(),
+                last_used_at timestamp with time zone not null default now()
+            )
+            """,
+            "create unique index if not exists uq_user_devices_device_token on user_devices (device_token)",
+            "create index if not exists ix_user_devices_user_id on user_devices (user_id)",
+            "create index if not exists ix_user_devices_device_token on user_devices (device_token)",
+            "create index if not exists ix_user_devices_is_active on user_devices (is_active)",
+        ]
+        for statement in user_device_statements:
+            connection.execute(text(statement))
+
         spam_keywords_statements = [
             """
             create table if not exists spam_keywords (

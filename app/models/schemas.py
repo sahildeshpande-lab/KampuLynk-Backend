@@ -49,6 +49,16 @@ class NotificationChannels(CamelModel):
     push: bool = False
 
 
+class DeviceRegistrationRequest(CamelModel):
+    token: str = Field(min_length=1, max_length=4096)
+    platform: str = Field(min_length=1, max_length=30, examples=["android"])
+    deviceName: str | None = Field(default=None, max_length=150)
+
+
+class DeviceDeactivateRequest(CamelModel):
+    token: str = Field(min_length=1, max_length=4096)
+
+
 class NotificationTemplate(CamelModel):
     id: str | None = Field(
         default=None,

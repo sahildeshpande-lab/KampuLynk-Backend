@@ -59,6 +59,7 @@ class User(Base):
     sessions = relationship("UserSession", back_populates="user", cascade="all, delete-orphan")
     otps = relationship("EmailOTP", back_populates="user", cascade="all, delete-orphan")
     notifications = relationship("UserNotification", back_populates="user", cascade="all, delete-orphan")
+    devices = relationship("UserDevice", back_populates="user", cascade="all, delete-orphan")
     academic_interests = relationship(
         "UserAcademicInterest",
         back_populates="user",
