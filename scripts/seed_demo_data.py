@@ -86,7 +86,7 @@ def _seed_plan() -> list[SeedUser]:
             bio="Connections-only profile for testing visibility rules.",
             profile_visibility="connections_only",
             interests=["Data Science"],
-        ),
+        )
     ]
 
     # Add more deterministic demo data so the admin dashboard has meaningful volume.
@@ -227,6 +227,58 @@ def _seed_plan() -> list[SeedUser]:
             ),
         ]
     )
+    return users
+
+
+def _random_users_plan(
+    total: int,
+    *,
+    seed: int | None = None,
+    email_domain: str = "demo.com",
+) -> list[SeedUser]:
+    rng = random.Random(seed)
+
+    roles = ["superadmin", "user", "viewer", "moderator"]
+    universities = ["MIT", "Stanford", "Harvard", "CMU", "UCLA", "UC Berkeley", "Oxford", "Cambridge"]
+    majors = ["CS", "Biology", "Economics", "Mathematics", "Physics", "Design", "Psychology", "Business"]
+    education_levels = ["bachelors", "masters", "phd", "professional"]
+    locations = ["USA", "India", "UK", "Canada", "Germany", "Singapore"]
+    interests = ["AI", "Genetics", "Robotics", "Startups", "Data Science", "Neuroscience", "Product", "Finance"]
+
+    planned_roles: list[str] = []
+    if total <= 0:
+        return []
+    if total >= len(roles):
+        planned_roles.extend(roles)
+        planned_roles.extend(rng.choices(roles, k=total - len(roles)))
+    else:
+        planned_roles.extend(rng.sample(roles, k=total))
+    rng.shuffle(planned_roles)
+
+    users: list[SeedUser] = []
+    visibilities = ["public", "private", "connections_only"]
+
+    for index, role in enumerate(planned_roles, start=1):
+        token = uuid.uuid4().hex[:10]
+        full_name = f"Seed {role.title()} {index}"
+        email = f"seed_{role}_{token}@{email_domain}"
+        users.append(
+            SeedUser(
+                full_name=full_name,
+                email=email,
+                role=role,
+                university=rng.choice(universities),
+                major=rng.choice(majors),
+                education_level=rng.choice(education_levels),
+                location=rng.choice(locations),
+                bio=f"Seeded {role} account for testing.",
+                profile_visibility=rng.choice(visibilities),
+                interests=rng.sample(interests, k=rng.randint(1, 3)),
+                is_email_verified=True,
+                is_active=True,
+                consent_given=True,
+            )
+        )
     return users
 
 
