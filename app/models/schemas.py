@@ -6,7 +6,7 @@ from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
 Role = Literal["user", "superadmin", "moderator", "viewer"]
 LoginType = Literal["email", "google", "apple"]
 SocialProvider = Literal["google", "apple"]
-EducationLevel = Literal["bachelors", "masters", "phd", "postdoctoral", "professional"]
+EducationLevel = Literal["Bachelors", "Masters", "Doctorate", "Postdoctoral", "Professional degree"]
 ProfileVisibility = Literal["public", "connections_only", "private"]
 NotificationTargetType = Literal["direct", "topic", "broadcast"]
 PostContentFormat = Literal["plain_text", "rich_text"]
@@ -140,6 +140,7 @@ class SignupRequest(CamelModel):
     fullName: str = Field(min_length=1, max_length=150)
     email: str = email_field()
     password: str = Field(min_length=8)
+    role: Role = "user"
     university: str | None = None
     major: str | None = None
     minor: str | None = None

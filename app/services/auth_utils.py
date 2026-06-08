@@ -5,7 +5,7 @@ from typing import Iterable
 
 import jwt
 from fastapi import HTTPException, Request, status
-from jwt.exceptions import InvalidTokenError
+from jwt.exceptions import InvalidTokenError, ExpiredSignatureError
 from pwdlib import PasswordHash
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -69,6 +69,8 @@ def jwt_encode(payload: dict) -> str: return jwt.encode(payload, jwt_secret(), a
 def jwt_decode(token_value: str) -> dict:
     try:
         return jwt.decode(token_value, jwt_secret(), algorithms=[jwt_algorithm()])
+    except ExpiredSignatureError:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Access token has expired. Please refresh your token")
     except InvalidTokenError:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
 
