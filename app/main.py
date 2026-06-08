@@ -10,6 +10,7 @@ from .db.db import engine, ensure_platform_defaults, migrate_legacy_users_table
 from .models.model import Base
 from .routes.admin import router as admin_router
 from .routes.auth import router as auth_router
+from .routes.devices import router as device_router
 from .routes.notifications import router as notification_router
 from .routes.invitations import router as invitation_router
 from .routes.discovery import router as discovery_router
@@ -73,6 +74,7 @@ app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 
 app.include_router(auth_router)
 app.include_router(user_router)
+app.include_router(device_router)
 app.include_router(admin_router)
 app.include_router(notification_router)
 app.include_router(invitation_router)

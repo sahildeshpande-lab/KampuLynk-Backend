@@ -2,9 +2,10 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from ..db.db import get_db
-from ..models.model import User, UserSession
+from ..models.model import User, UserNotification, UserSession
 from ..models.schemas import ApiResponse, ChangePasswordRequest, ProfileVisibilityUpdate, ReportUserRequest, UserUpdate
 from ..services import post_service
+from ..services.push_dispatcher import dispatch_queued_push_notifications
 from .shared import (
     _apply_user_update,
     _hash_password,
@@ -62,7 +63,31 @@ def change_password(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid current password")
     current_user.password_hash = _hash_password(payload.newPassword)
     db.commit()
-    _send_password_changed(current_user.email, current_user.full_name)
+    sent = _send_password_changed(current_user.email, current_user.full_name)
+    preferences = current_user.notification_preferences
+    allow_in_app = True if not preferences else bool(preferences.in_app)
+    allow_push = True if not preferences else bool(preferences.push)
+    notification = None
+    if allow_in_app or allow_push:
+        notification = UserNotification(
+            user_id=current_user.id,
+            notification_type="password-changed",
+            target_type="direct",
+            template_key=None,
+            title="Password changed",
+            body="Your password was changed successfully. If this wasn't you, secure your account immediately.",
+            channels={"email": False, "inApp": allow_in_app, "push": allow_push},
+            delivery_status={
+                "email": "sent" if sent else "failed",
+                "inApp": "created" if allow_in_app else "skipped",
+                "push": "queued" if allow_push else "skipped",
+            },
+        )
+        db.add(notification)
+        db.commit()
+    if notification and allow_push:
+        db.refresh(notification)
+        dispatch_queued_push_notifications(db, [notification.id])
     return api_response("Password changed")
 
 

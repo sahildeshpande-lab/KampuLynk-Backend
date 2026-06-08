@@ -9,6 +9,7 @@ from ..db.db import get_db
 from ..models.model import NotificationType, User, UserNotification
 from ..models.schemas import ApiResponse, NotificationTypeCreate, SendNotificationRequest
 from ..services.email_service import send_notification_email
+from ..services.push_dispatcher import dispatch_queued_push_notifications
 from .shared import _academic_interests, _notification_preferences, api_response, get_admin_user, get_current_user
 
 NOTIFICATION_TAG = "3] Notifications"
@@ -176,6 +177,10 @@ def send_notification(
 
     notifications = [_send_user_notification(db, user, payload) for user in users]
     db.commit()
+    for notification in notifications:
+        db.refresh(notification)
+
+    dispatch_queued_push_notifications(db, [notification.id for notification in notifications])
     for notification in notifications:
         db.refresh(notification)
 

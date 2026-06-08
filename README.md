@@ -120,8 +120,11 @@ The Playwright API test starts a temporary local API server and uses a temporary
 ## Documentation
 
 - Swagger testing guide: [README_TEST.md](README_TEST.md)
-- cURL examples: [API_CURL_DOCUMENTATION.md](API_CURL_DOCUMENTATION.md)
-- Notification and OTP email testing: [NOTIFICATION_TESTING.md](NOTIFICATION_TESTING.md)
+
+
+
+
+
 
 ## Notes
 

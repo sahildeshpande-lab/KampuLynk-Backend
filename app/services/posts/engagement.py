@@ -13,6 +13,7 @@ from ...models.schemas import (
 from .common import ensure_post_engagement_enabled, post_or_404
 from .content import create_comment
 from .serialization import comment_to_schema, post_reaction_summary
+from ..push_dispatcher import dispatch_queued_push_notifications
 
 RECOGNITION_THRESHOLDS = (5, 10, 25, 50, 100)
 
@@ -22,9 +23,9 @@ def _recognition_milestone(current_like_count: int) -> int | None:
     return matched[-1] if matched else None
 
 
-def _send_positive_recognition(db: Session, post: Post, milestone: int) -> None:
+def _send_positive_recognition(db: Session, post: Post, milestone: int) -> UserNotification | None:
     if milestone is None:
-        return
+        return None
     event_key = f"post_like_milestone_{post.id}_{milestone}"
     exists = db.query(UserNotification).filter(
         UserNotification.user_id == post.author_id,
@@ -32,19 +33,30 @@ def _send_positive_recognition(db: Session, post: Post, milestone: int) -> None:
         UserNotification.template_key == event_key,
     ).first()
     if exists:
-        return
-    db.add(
-        UserNotification(
-            user_id=post.author_id,
-            notification_type="engagement_milestone",
-            target_type="direct",
-            template_key=event_key,
-            title="Your post is getting recognized",
-            body=f"Your post reached {milestone} reactions, keep it up.",
-            channels={"email": False, "inApp": True, "push": False},
-            delivery_status={"status": "created", "milestone": milestone},
-        )
+        return None
+    preferences = post.author.notification_preferences if post.author else None
+    allow_in_app = True if not preferences else bool(preferences.in_app)
+    allow_push = True if not preferences else bool(preferences.push)
+    if not allow_in_app and not allow_push:
+        return None
+    notification = UserNotification(
+        user_id=post.author_id,
+        notification_type="engagement_milestone",
+        target_type="direct",
+        template_key=event_key,
+        title="Your post is getting recognized",
+        body=f"Your post reached {milestone} reactions, keep it up.",
+        channels={"email": False, "inApp": allow_in_app, "push": allow_push},
+        delivery_status={
+            "status": "created",
+            "milestone": milestone,
+            "email": "skipped",
+            "inApp": "created" if allow_in_app else "skipped",
+            "push": "queued" if allow_push else "skipped",
+        },
     )
+    db.add(notification)
+    return notification
 
 
 def upsert_post_reaction(db: Session, current_user: User, post_id: str, payload: PostReactionRequest) -> dict:
@@ -66,16 +78,20 @@ def upsert_post_reaction(db: Session, current_user: User, post_id: str, payload:
     post = post_or_404(db, post_id)
     ensure_post_engagement_enabled(post)
     reaction = db.query(PostReaction).filter(PostReaction.post_id == post_id, PostReaction.user_id == current_user.id).first()
+    notification = None
     if not reaction:
         reaction = PostReaction(post_id=post_id, user_id=current_user.id, reaction_type=reaction_type)
         db.add(reaction)
         post.like_count = (post.like_count or 0) + 1
-        _send_positive_recognition(db, post, _recognition_milestone(post.like_count or 0))
+        notification = _send_positive_recognition(db, post, _recognition_milestone(post.like_count or 0))
     else:
         if reaction.reaction_type == "like" and reaction_type == "like":
             return post_reaction_summary(db, post_id)
         reaction.reaction_type = reaction_type
     db.commit()
+    if notification and (notification.channels or {}).get("push"):
+        db.refresh(notification)
+        dispatch_queued_push_notifications(db, [notification.id])
     return post_reaction_summary(db, post_id)
 
 
@@ -122,8 +138,11 @@ def create_repost(db: Session, current_user: User, post_id: str, payload: Repost
     repost = Repost(post_id=post_id, user_id=current_user.id, quote=payload.quote)
     db.add(repost)
     post.repost_count = (post.repost_count or 0) + 1
-    _send_positive_recognition(db, post, _recognition_milestone((post.like_count or 0) + (post.repost_count or 0)))
+    notification = _send_positive_recognition(db, post, _recognition_milestone((post.like_count or 0) + (post.repost_count or 0)))
     db.commit()
+    if notification and (notification.channels or {}).get("push"):
+        db.refresh(notification)
+        dispatch_queued_push_notifications(db, [notification.id])
     db.refresh(repost)
     return repost
 

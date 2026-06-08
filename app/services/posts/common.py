@@ -128,13 +128,7 @@ def publish_gate(status_value: str, moderation_status: str, moderation_reasons: 
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Post blocked by content safety checks: {reason_text}")
 
 
-def queue_moderation(
-    db: Session,
-    content_type: str,
-    content_id: str,
-    reasons: list[str],
-    reporter_user_id: str | None = None,
-) -> None:
+def queue_moderation(db: Session,content_type: str,content_id: str,reasons: list[str], reporter_user_id: str | None = None,) -> None:
     if not reasons and reporter_user_id is None:
         return
     exists = db.query(ModerationQueueItem).filter(

@@ -1,10 +1,13 @@
 import os
+import logging
 from html import escape
 from pathlib import Path
 
 from ..config import load_env_files
 
 load_env_files()
+
+logger = logging.getLogger(__name__)
 
 
 TEMPLATE_DIR = Path(__file__).resolve().parents[1] / "templates"
@@ -21,17 +24,34 @@ BRAND_COLORS = {
 }
 
 
+def _sender_is_placeholder(from_email: str) -> bool:
+    return from_email.strip().lower() == "no-reply@yourdomain.com"
+
+
 def _send_email(to_email: str, subject: str, html_body: str) -> bool:
     api_key = os.getenv("SENDGRID_API_KEY")
     from_email = os.getenv("SENDGRID_FROM_EMAIL")
 
-    if not api_key or not from_email:
+    if not api_key:
+        logger.warning("Email send skipped: SENDGRID_API_KEY is not configured")
+        return False
+
+    if not from_email:
+        logger.warning("Email send skipped: SENDGRID_FROM_EMAIL is not configured")
+        return False
+
+    if _sender_is_placeholder(from_email):
+        logger.warning(
+            "Email send skipped: SENDGRID_FROM_EMAIL is still the placeholder value %s",
+            from_email,
+        )
         return False
 
     try:
         from sendgrid import SendGridAPIClient
         from sendgrid.helpers.mail import Mail
     except Exception:
+        logger.exception("Email send skipped: SendGrid client could not be imported")
         return False
 
     try:
@@ -45,6 +65,7 @@ def _send_email(to_email: str, subject: str, html_body: str) -> bool:
         response = client.send(message)
         return 200 <= response.status_code < 300
     except Exception:
+        logger.exception("Email send failed while delivering to %s", to_email)
         return False
 
 

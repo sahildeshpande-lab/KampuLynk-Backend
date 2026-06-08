@@ -134,6 +134,93 @@ def migrate_legacy_users_table():
             connection.execute(
                 text("alter table posts add column if not exists engagement_enabled boolean not null default true")
             )
+            """,
+            "create unique index if not exists uq_daily_analytics_date on daily_analytics (date)",
+            "create index if not exists ix_daily_analytics_date on daily_analytics (date)",
+        ]
+        for statement in daily_analytics_statements:
+            connection.execute(text(statement))
+
+        user_device_statements = [
+            """
+            create table if not exists user_devices (
+                id varchar(36) primary key,
+                user_id varchar(36) not null references users(id) on delete cascade,
+                device_token varchar(4096) not null,
+                platform varchar(30) not null,
+                device_name varchar(150),
+                is_active boolean not null default true,
+                created_at timestamp with time zone not null default now(),
+                updated_at timestamp with time zone not null default now(),
+                last_used_at timestamp with time zone not null default now()
+            )
+            """,
+            "create unique index if not exists uq_user_devices_device_token on user_devices (device_token)",
+            "create index if not exists ix_user_devices_user_id on user_devices (user_id)",
+            "create index if not exists ix_user_devices_device_token on user_devices (device_token)",
+            "create index if not exists ix_user_devices_is_active on user_devices (is_active)",
+        ]
+        for statement in user_device_statements:
+            connection.execute(text(statement))
+
+        spam_keywords_statements = [
+            """
+            create table if not exists spam_keywords (
+                id varchar(36) primary key,
+                keyword varchar(255) unique not null,
+                keyword_type varchar(30) not null,
+                is_active boolean not null default true,
+                created_by_user_id varchar(36) references users(id) on delete set null,
+                updated_by_user_id varchar(36) references users(id) on delete set null,
+                created_at timestamp with time zone not null default now(),
+                updated_at timestamp with time zone not null default now()
+            )
+            """,
+            "create index if not exists ix_spam_keywords_keyword on spam_keywords (keyword)",
+            "create index if not exists ix_spam_keywords_keyword_type on spam_keywords (keyword_type)",
+            "create index if not exists ix_spam_keywords_is_active on spam_keywords (is_active)",
+        ]
+        for statement in spam_keywords_statements:
+            connection.execute(text(statement))
+
+
+def ensure_platform_defaults():
+    from ..models.model import PlatformConfig, SpamKeyword
+
+    db = SessionLocal()
+    try:
+        if not db.query(PlatformConfig).filter(PlatformConfig.key == "comment.maxDepth").first():
+            db.add(
+                PlatformConfig(
+                    key="comment.maxDepth",
+                    value={"value": 3},
+                    description="Maximum allowed nested comment depth.",
+                )
+            )
+        if not db.query(PlatformConfig).filter(PlatformConfig.key == "moderation.blocklist").first():
+            db.add(
+                PlatformConfig(
+                    key="moderation.blocklist",
+                    value={"terms": ["damn", "shit", "buy followers", "free crypto", "click this scam", "visit shady link"]},
+                    description="Case-insensitive blocked terms used during post/comment content scanning.",
+                )
+            )
+        if db.query(SpamKeyword).count() == 0:
+            defaults = [
+                ("buy followers", "spam"),
+                ("free crypto", "spam"),
+                ("click this scam", "spam"),
+                ("visit shady link", "spam"),
+                ("damn", "profanity"),
+                ("free", "profanity"),
+                ("money", "profanity"),
+                ("spam", "profanity"),
+            ]
+            for keyword, keyword_type in defaults:
+                db.add(SpamKeyword(keyword=keyword, keyword_type=keyword_type, is_active=True))
+        db.commit()
+    finally:
+        db.close()
 
 
 def get_db():
