@@ -35,8 +35,8 @@ def _send_positive_recognition(db: Session, post: Post, milestone: int) -> UserN
     if exists:
         return None
     preferences = post.author.notification_preferences if post.author else None
-    allow_in_app = True if not preferences else bool(preferences.in_app)
-    allow_push = True if not preferences else bool(preferences.push)
+    allow_in_app = True if not preferences else bool(preferences.get("inApp", True))
+    allow_push = True if not preferences else bool(preferences.get("push", True))
     if not allow_in_app and not allow_push:
         return None
     notification = UserNotification(

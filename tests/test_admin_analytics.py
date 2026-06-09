@@ -20,7 +20,7 @@ def _signup(client, email: str, admin: bool = False):
     res = client.post(
         path,
         json={
-            "fullName": "Analytics User",
+            "firstName": "Analytics", "lastName": "User",
             "email": email,
             "password": "StrongPass123",
             "consentGiven": True,

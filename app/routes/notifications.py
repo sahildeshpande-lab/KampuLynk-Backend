@@ -59,14 +59,14 @@ def _user_matches_topic(user: User, topic: str) -> bool:
 
 def _users_for_notification(db: Session, payload: SendNotificationRequest) -> tuple[list[User], list[str]]:
     if payload.targetType == "broadcast":
-        return db.query(User).filter(User.is_active.is_(True)).all(), []
+        return db.query(User).filter(User.is_delete.is_(False)).all(), []
 
     if payload.targetType == "topic":
-        active_users = db.query(User).filter(User.is_active.is_(True)).all()
+        active_users = db.query(User).filter(User.is_delete.is_(False)).all()
         return [user for user in active_users if payload.topic and _user_matches_topic(user, payload.topic)], []
 
     unique_user_ids = list(dict.fromkeys(payload.userIds))
-    users = db.query(User).filter(User.id.in_(unique_user_ids), User.is_active.is_(True)).all()
+    users = db.query(User).filter(User.id.in_(unique_user_ids), User.is_delete.is_(False)).all()
     found_user_ids = {user.id for user in users}
     missing_user_ids = [user_id for user_id in unique_user_ids if user_id not in found_user_ids]
     return users, missing_user_ids

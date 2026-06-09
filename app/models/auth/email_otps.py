@@ -14,6 +14,8 @@ class EmailOTP(Base):
     code = Column(String(12), nullable=False)
     purpose = Column(String(30), default="email_verification", nullable=False)
     is_used = Column(Boolean, default=False, nullable=False)
+    is_expired = Column(Boolean, default=False, nullable=False)
+    is_expire = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     user = relationship("User", back_populates="otps")

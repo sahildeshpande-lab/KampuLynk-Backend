@@ -10,7 +10,8 @@ def mock_emails(monkeypatch):
 def _get_token(client, email="user@test.com", role="user"):
     path = "/auth/signup" if role == "user" else "/auth/admin/signup"
     response = client.post(path, json={
-        "fullName": "Test User",
+        "firstName": "Test",
+        "lastName": "User",
         "email": email,
         "password": "StrongPass123",
         "consentGiven": True,
@@ -61,7 +62,8 @@ def test_get_public_user(client, auth_headers):
     assert res.status_code == 200
     response = client.get(f"/users/{user_id}")
     assert response.status_code == 200
-    assert response.json()["data"]["fullName"] == "Test User"
+    assert response.json()["data"]["firstName"] == "Test"
+    assert response.json()["data"]["lastName"] == "User"
 
 
 def test_profile_visibility_connections_only(client, auth_headers):
@@ -131,7 +133,8 @@ def test_admin_list_users(client, auth_headers):
 def test_admin_create_user(client, auth_headers):
     admin_token, _ = _get_token(client, "admincreate@test.com", role="admin")
     payload = {
-        "fullName": "Created By Admin",
+        "firstName": "Created",
+        "lastName": "By Admin",
         "email": "created@test.com",
         "password": "StrongPass123",
         "role": "user",

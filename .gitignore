@@ -54,6 +54,8 @@ Desktop.ini
 *.sqlite3
 
 
+# Alembic migrations
+alembic/versions/
 # firebase
 secrets/
 *.json

@@ -2,6 +2,7 @@ import uuid
 
 from sqlalchemy import Boolean, Column, Date, DateTime, ForeignKey, Index, Integer, JSON, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import relationship
+from sqlalchemy.ext.hybrid import hybrid_property
 
 from ...db.db import Base
 
@@ -10,7 +11,8 @@ class User(Base):
     __tablename__ = "users"
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), index=True)
-    full_name = Column(String(150), nullable=False)
+    first_name = Column(String(75), nullable=False)
+    last_name = Column(String(75), nullable=False)
     email = Column(String(255), unique=True, index=True, nullable=False)
     password_hash = Column(String(255), nullable=True)
     role = Column(String(30), default="user", nullable=False, index=True)
@@ -28,14 +30,13 @@ class User(Base):
     country = Column(String(120), nullable=True, index=True)
     profile_visibility = Column(String(30), default="private", nullable=False)
     completeness_score = Column(Integer, default=0, nullable=False)
-    legacy_notification_preferences = Column(
-        "notification_preferences",
+    notification_preferences = Column(
         JSON,
         default=lambda: {"email": True, "push": True, "inApp": True},
         nullable=False,
     )
     is_email_verified = Column(Boolean, default=False, nullable=False)
-    is_active = Column(Boolean, default=True, nullable=False)
+    is_delete = Column(Boolean, default=False, nullable=False)
     consent_given = Column(Boolean, default=False, nullable=False)
     reference_code = Column(String(32), nullable=True, index=True)
     invitation_code = Column(String(32), nullable=True, index=True)
@@ -66,12 +67,6 @@ class User(Base):
         cascade="all, delete-orphan",
         order_by="UserAcademicInterest.created_at",
     )
-    notification_preferences = relationship(
-        "UserNotificationPreference",
-        back_populates="user",
-        cascade="all, delete-orphan",
-        uselist=False,
-    )
     invitation_codes = relationship(
         "InvitationCode",
         back_populates="originator",
@@ -85,3 +80,6 @@ class User(Base):
         cascade="all, delete-orphan",
     )
     posts = relationship("Post", back_populates="author", cascade="all, delete-orphan", foreign_keys="Post.author_id")
+
+
+

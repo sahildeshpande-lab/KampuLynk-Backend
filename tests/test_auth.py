@@ -16,7 +16,7 @@ def test_root(client):
 
 def test_signup(client):
     payload = {
-        "fullName": "Auth Test User",
+        "firstName": "Auth", "lastName": "Test User",
         "email": "authtest@university.edu",
         "password": "StrongPass123",
         "university": "MIT",
@@ -34,7 +34,7 @@ def test_verify_otp(client, monkeypatch):
     
     email = "verifyotp@university.edu"
     client.post("/auth/signup", json={
-        "fullName": "Verify User",
+        "firstName": "Verify", "lastName": "User",
         "email": email,
         "password": "StrongPass123",
         "consentGiven": True,
@@ -54,7 +54,7 @@ def test_resend_otp(client, monkeypatch):
     
     email = "resendotp@university.edu"
     client.post("/auth/signup", json={
-        "fullName": "Resend User",
+        "firstName": "Resend", "lastName": "User",
         "email": email,
         "password": "StrongPass123",
         "consentGiven": True,
@@ -72,7 +72,7 @@ def test_login(client):
     email = "login@university.edu"
     password = "StrongPass123"
     client.post("/auth/signup", json={
-        "fullName": "Login User",
+        "firstName": "Login", "lastName": "User",
         "email": email,
         "password": password,
         "consentGiven": True,
@@ -98,7 +98,7 @@ def test_same_password_gets_unique_salted_hashes():
 
 def test_user_token_unlocks_user_routes_but_not_admin_routes(client, auth_headers):
     signup = client.post("/auth/signup", json={
-        "fullName": "Regular User",
+        "firstName": "Regular", "lastName": "User",
         "email": "regular.user@university.edu",
         "password": "StrongPass123",
         "consentGiven": True,
@@ -119,7 +119,7 @@ def test_oauth2_password_form_user_login(client, auth_headers):
     email = "oauth.user@university.edu"
     password = "StrongPass123"
     client.post("/auth/signup", json={
-        "fullName": "OAuth User",
+        "firstName": "OAuth", "lastName": "User",
         "email": email,
         "password": password,
         "consentGiven": True,
@@ -139,7 +139,7 @@ def test_oauth2_password_form_user_login(client, auth_headers):
 
 def test_admin_token_unlocks_admin_routes(client, auth_headers):
     signup = client.post("/auth/admin/signup", json={
-        "fullName": "Route Admin",
+        "firstName": "Route", "lastName": "Admin",
         "email": "route.admin@university.edu",
         "password": "StrongPass123",
         "consentGiven": True,
@@ -158,7 +158,7 @@ def test_oauth2_password_form_admin_login(client, auth_headers):
     email = "oauth.admin@university.edu"
     password = "StrongPass123"
     client.post("/auth/admin/signup", json={
-        "fullName": "OAuth Admin",
+        "firstName": "OAuth", "lastName": "Admin",
         "email": email,
         "password": password,
         "consentGiven": True,
@@ -180,7 +180,7 @@ def test_social_login(client):
         "provider": "google",
         "idToken": "fake-token",
         "email": "social@university.edu",
-        "fullName": "Social User"
+        "firstName": "Social", "lastName": "User"
     }
     response = client.post("/auth/social", json=payload)
     assert response.status_code == 200
@@ -189,7 +189,7 @@ def test_social_login(client):
 def test_refresh_token(client):
     email = "refresh@university.edu"
     signup = client.post("/auth/signup", json={
-        "fullName": "Refresh User",
+        "firstName": "Refresh", "lastName": "User",
         "email": email,
         "password": "StrongPass123",
         "consentGiven": True,
@@ -206,7 +206,7 @@ def test_refresh_token(client):
 def test_logout(client, auth_headers):
     email = "logout@university.edu"
     signup = client.post("/auth/signup", json={
-        "fullName": "Logout User",
+        "firstName": "Logout", "lastName": "User",
         "email": email,
         "password": "StrongPass123",
         "consentGiven": True,
@@ -224,7 +224,7 @@ def test_logout(client, auth_headers):
 
 def test_admin_signup(client):
     payload = {
-        "fullName": "Admin New",
+        "firstName": "Admin", "lastName": "New",
         "email": "admin.new@university.edu",
         "password": "StrongPass123",
         "consentGiven": True,
@@ -240,7 +240,7 @@ def test_admin_signin(client):
     email = "admin.signin@university.edu"
     password = "StrongPass123"
     client.post("/auth/admin/signup", json={
-        "fullName": "Admin Signin",
+        "firstName": "Admin", "lastName": "Signin",
         "email": email,
         "password": password,
         "consentGiven": True,

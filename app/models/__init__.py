@@ -5,13 +5,12 @@ from .auth import EmailOTP, LoginRateLimit, UserSession
 from .invitations import Invitation, InvitationCode
 from .notifications import NotificationType, UserNotification
 from .posts import Comment, CommentReaction, Post, PostComment, PostDraft, PostEditHistory, PostEngagement, PostMedia, PostReaction, Repost
-from .users import User, UserAcademicInterest, UserNotificationPreference
+from .users import User, UserAcademicInterest
 
 __all__ = [
     "Base",
     "User",
     "UserAcademicInterest",
-    "UserNotificationPreference",
     "UserSession",
     "LoginRateLimit",
     "EmailOTP",

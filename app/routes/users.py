@@ -23,8 +23,9 @@ USER_TAG = "2] User Management"
 router = APIRouter(tags=[USER_TAG])
 
 
-def _send_password_changed(email: str, full_name: str | None = None) -> bool:
+def _send_password_changed(email: str, first_name: str | None = None, last_name: str | None = None) -> bool:
     from app import main as main_module
+    full_name = f"{first_name} {last_name}" if first_name and last_name else (first_name or last_name or None)
     return main_module.send_password_changed_email(email, full_name)
 
 
@@ -63,10 +64,10 @@ def change_password(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid current password")
     current_user.password_hash = _hash_password(payload.newPassword)
     db.commit()
-    sent = _send_password_changed(current_user.email, current_user.full_name)
+    sent = _send_password_changed(current_user.email, current_user.first_name, current_user.last_name)
     preferences = current_user.notification_preferences
-    allow_in_app = True if not preferences else bool(preferences.in_app)
-    allow_push = True if not preferences else bool(preferences.push)
+    allow_in_app = preferences.get("inApp", True) if preferences else True
+    allow_push = preferences.get("push", True) if preferences else True
     notification = None
     if allow_in_app or allow_push:
         notification = UserNotification(
@@ -93,7 +94,7 @@ def change_password(
 
 @router.delete("/users/me", response_model=ApiResponse)
 def delete_me(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    current_user.is_active = False
+    current_user.is_delete = True
     db.query(UserSession).filter(UserSession.user_id == current_user.id).update({"is_active": False})
     db.commit()
     return api_response("Current user deleted")
@@ -106,7 +107,7 @@ def export_me(current_user: User = Depends(get_current_user)):
 
 @router.get("/users/{userId}", response_model=ApiResponse)
 def get_public_user(userId: str, db: Session = Depends(get_db), current_user: User | None = Depends(get_current_user_optional)):
-    user = db.query(User).filter(User.id == userId, User.is_active.is_(True)).first()
+    user = db.query(User).filter(User.id == userId, User.is_delete.is_(False)).first()
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     if user.profile_visibility == "connections_only":
@@ -117,7 +118,7 @@ def get_public_user(userId: str, db: Session = Depends(get_db), current_user: Us
 
 @router.post("/users/{userId}/follow", response_model=ApiResponse)
 def follow_user(userId: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    target = db.query(User).filter(User.id == userId, User.is_active.is_(True)).first()
+    target = db.query(User).filter(User.id == userId, User.is_delete.is_(False)).first()
     if not target:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     if userId == current_user.id:
@@ -138,7 +139,7 @@ def unfollow_user(userId: str, current_user: User = Depends(get_current_user), d
 
 @router.post("/users/{userId}/block", response_model=ApiResponse)
 def block_user(userId: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    target = db.query(User).filter(User.id == userId, User.is_active.is_(True)).first()
+    target = db.query(User).filter(User.id == userId, User.is_delete.is_(False)).first()
     if not target:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     if userId == current_user.id:
@@ -183,7 +184,7 @@ def report_user(
 
 @router.post("/users/{userId}/lynkup/request", response_model=ApiResponse)
 def lynkup_request(userId: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    target = db.query(User).filter(User.id == userId, User.is_active.is_(True)).first()
+    target = db.query(User).filter(User.id == userId, User.is_delete.is_(False)).first()
     if not target:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     if userId == current_user.id:
@@ -213,7 +214,7 @@ def lynkup_request(userId: str, current_user: User = Depends(get_current_user), 
 
 @router.post("/users/{userId}/lynkup/accept", response_model=ApiResponse)
 def lynkup_accept(userId: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    target = db.query(User).filter(User.id == userId, User.is_active.is_(True)).first()
+    target = db.query(User).filter(User.id == userId, User.is_delete.is_(False)).first()
     if not target:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     if current_user.id in (target.blocked_user_ids or []) or userId in (current_user.blocked_user_ids or []):
@@ -236,7 +237,7 @@ def lynkup_accept(userId: str, current_user: User = Depends(get_current_user), d
 
 @router.delete("/users/{userId}/lynkup", response_model=ApiResponse)
 def lynkup_remove(userId: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    target = db.query(User).filter(User.id == userId, User.is_active.is_(True)).first()
+    target = db.query(User).filter(User.id == userId, User.is_delete.is_(False)).first()
     if not target:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 

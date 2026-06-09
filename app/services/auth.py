@@ -1,7 +1,7 @@
 from fastapi import HTTPException, Request, status
 from sqlalchemy.orm import Session
 
-from ..models.model import EmailOTP, InvitationCode, User, UserNotification, UserNotificationPreference, UserSession
+from ..models.model import EmailOTP, InvitationCode, User, UserNotification, UserSession
 from ..models.schemas import (
     ForgotPasswordRequest,
     LoginRequest,
@@ -66,17 +66,24 @@ def create_session(db: Session, user: User) -> UserSession:
 
 def send_otp(email: str, otp: str) -> bool:
     from app import main as main_module
-    return main_module.send_otp_email(email, otp)
+    try:
+        return main_module.send_otp_email(email, otp, otp_purpose="email_verification")
+    except TypeError:
+        return main_module.send_otp_email(email, otp)
 
 
-def send_account_created(email: str, full_name: str | None = None) -> bool:
+def send_account_created(email: str, first_name: str | None = None, last_name: str | None = None) -> bool:
     from app import main as main_module
+    full_name = f"{first_name} {last_name}" if first_name and last_name else (first_name or last_name or None)
     return main_module.send_account_created_email(email, full_name)
 
 
 def send_password_reset(email: str, otp: str) -> bool:
     from app import main as main_module
-    return main_module.send_otp_email(email, otp)
+    try:
+        return main_module.send_otp_email(email, otp, otp_purpose="password_reset")
+    except TypeError:
+        return main_module.send_otp_email(email, otp)
 
 
 def create_in_app_notification(
@@ -88,8 +95,8 @@ def create_in_app_notification(
     delivery_status: dict,
 ) -> UserNotification | None:
     preferences = user.notification_preferences
-    allow_in_app = True if not preferences else bool(preferences.in_app)
-    allow_push = True if not preferences else bool(preferences.push)
+    allow_in_app = True if not preferences else bool(preferences.get("inApp", True))
+    allow_push = True if not preferences else bool(preferences.get("push", True))
     if not allow_in_app and not allow_push:
         return None
 
@@ -185,6 +192,7 @@ def verify_user_otp(db: Session, payload: VerifyOTPRequest) -> dict:
         EmailOTP.user_id == user.id,
         EmailOTP.code == payload.otp,
         EmailOTP.is_used.is_(False),
+        EmailOTP.is_expire.is_(False),
     ).order_by(EmailOTP.created_at.desc()).first()
     if not otp:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid OTP")
@@ -193,7 +201,7 @@ def verify_user_otp(db: Session, payload: VerifyOTPRequest) -> dict:
     otp.is_used = True
     user.is_email_verified = True
     db.commit()
-    sent = send_account_created(user.email, user.full_name)
+    sent = send_account_created(user.email, user.first_name, user.last_name)
     notification = create_in_app_notification(
         db,
         user,
@@ -228,7 +236,7 @@ def resend_user_otp(db: Session, payload: ResendOTPRequest) -> dict:
 
 def forgot_user_password(db: Session, payload: ForgotPasswordRequest) -> dict:
     user = get_user_by_email(db, payload.email)
-    if not user or not user.is_active or user.login_type != "email":
+    if not user or user.is_delete or user.login_type != "email":
         return {"email": payload.email}
 
     otp = EmailOTP(user_id=user.id, code=generate_otp_code(), purpose="password_reset")
@@ -251,7 +259,7 @@ def forgot_user_password(db: Session, payload: ForgotPasswordRequest) -> dict:
 
 def reset_user_password(db: Session, payload: ResetPasswordRequest) -> dict:
     user = get_user_by_email(db, payload.email)
-    if not user or not user.is_active:
+    if not user or user.is_delete:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     otp = (
         db.query(EmailOTP)
@@ -260,6 +268,7 @@ def reset_user_password(db: Session, payload: ResetPasswordRequest) -> dict:
             EmailOTP.code == payload.otp,
             EmailOTP.purpose == "password_reset",
             EmailOTP.is_used.is_(False),
+            EmailOTP.is_expire.is_(False),
         )
         .order_by(EmailOTP.created_at.desc())
         .first()
@@ -281,8 +290,8 @@ def login_user(db: Session, payload: LoginRequest, request: Request) -> dict:
     if not user:
         register_login_failure(db, payload.email, ip)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password")
-    if not user.is_active:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="User is inactive")
+    if user.is_delete:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="User is deleted")
     upgrade_password_hash_if_needed(db, user, payload.password)
     clear_login_rate_limit(db, payload.email, ip)
     session = create_session(db, user)
@@ -301,8 +310,8 @@ def login_for_access_token(db: Session, email: str, password: str, request: Requ
             detail="Incorrect username or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    if not user.is_active:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="User is inactive")
+    if user.is_delete:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="User is deleted")
     upgrade_password_hash_if_needed(db, user, password)
     clear_login_rate_limit(db, email, ip)
     session = create_session(db, user)
@@ -315,14 +324,15 @@ def social_login_user(db: Session, payload: OAuthRequest) -> dict:
     user = get_user_by_email(db, payload.email)
     if not user:
         user = User(
-            full_name=payload.fullName or payload.email.split("@")[0],
+            first_name=payload.firstName or payload.email.split("@")[0],
+            last_name=payload.lastName or "",
             email=payload.email,
             login_type=provider,
             profile_photo_url=payload.profilePhotoUrl,
             is_email_verified=True,
             consent_given=True,
         )
-        user.notification_preferences = UserNotificationPreference(email=True, push=True, in_app=True)
+        user.notification_preferences = {"email": True, "push": True, "inApp": True}
         user.completeness_score = calculate_completeness(user)
         db.add(user)
         db.commit()

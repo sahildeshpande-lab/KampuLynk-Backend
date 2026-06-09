@@ -13,3 +13,6 @@ playwright
 pytest-playwright
 sendgrid
 firebase-admin
+boto3
+pydantic-settings
+alembic

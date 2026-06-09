@@ -12,7 +12,7 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 from app.db.db import Base, SessionLocal, engine
-from app.models.model import User, UserAcademicInterest, UserNotificationPreference
+from app.models.model import User, UserAcademicInterest
 from app.routes.shared import _calculate_completeness, _hash_password
 
 
@@ -336,8 +336,12 @@ def _random_users_plan(
 
 
 def _create_user(row: SeedUser) -> User:
+    parts = row.full_name.split(" ", 1)
+    first_name = parts[0]
+    last_name = parts[1] if len(parts) > 1 else ""
     user = User(
-        full_name=row.full_name,
+        first_name=first_name,
+        last_name=last_name,
         email=row.email.lower(),
         password_hash=_hash_password(DEFAULT_PASSWORD),
         role=row.role,
@@ -351,13 +355,13 @@ def _create_user(row: SeedUser) -> User:
         country=row.location,
         profile_visibility=row.profile_visibility,
         is_email_verified=row.is_email_verified,
-        is_active=row.is_active,
+        is_delete=not row.is_active,
         consent_given=row.consent_given,
     )
     user.academic_interests = [
         UserAcademicInterest(interest=interest) for interest in (row.interests or [])
     ]
-    user.notification_preferences = UserNotificationPreference(email=True, push=True, in_app=True)
+    user.notification_preferences = {"email": True, "push": True, "inApp": True}
     user.completeness_score = _calculate_completeness(user)
     return user
 

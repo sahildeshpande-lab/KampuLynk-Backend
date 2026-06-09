@@ -190,8 +190,8 @@ def admin_signin(payload: LoginRequest, db: Session = Depends(get_db)):
     user = _get_user_by_email(db, payload.email)
     if not user or not _verify_password(payload.password, user.password_hash):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password")
-    if not user.is_active:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="User is inactive")
+    if user.is_delete:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="User is deleted")
     if user.role not in {"superadmin", "moderator", "viewer"}:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
     if _password_needs_rehash(user.password_hash):
@@ -213,8 +213,8 @@ def admin_login_for_access_token(
             detail="Incorrect username or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    if not user.is_active:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="User is inactive")
+    if user.is_delete:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="User is deleted")
     if user.role not in {"superadmin", "moderator", "viewer"}:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
     if _password_needs_rehash(user.password_hash):
@@ -299,7 +299,7 @@ def admin_update_user(
 @router.delete("/users/admin/{userId}", response_model=ApiResponse)
 def admin_delete_user(userId: str, _: User = Depends(get_admin_user), db: Session = Depends(get_db)):
     user = _get_user_or_404(db, userId)
-    user.is_active = False
+    user.is_delete = True
     db.query(UserSession).filter(UserSession.user_id == user.id).update({"is_active": False})
     db.commit()
     return api_response("User deleted by admin")

@@ -137,7 +137,7 @@ def report_comment(db: Session, current_user: User, comment_id: str, reasons: li
 
 
 def report_user(db: Session, current_user: User, user_id: str, reasons: list[str]) -> None:
-    target_user = db.query(User).filter(User.id == user_id, User.is_active.is_(True)).first()
+    target_user = db.query(User).filter(User.id == user_id, User.is_delete.is_(False)).first()
     if not target_user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     if target_user.id == current_user.id:
@@ -187,7 +187,7 @@ def list_moderation_queue(
                     {
                         "id": user.id,
                         "type": "user",
-                        "content": f"{user.full_name} ({user.email})",
+                        "content": f"{user.first_name} {user.last_name} ({user.email})".strip(),
                         "reportCount": 1,
                         "moderationStatus": item.status,
                         "createdAt": item.created_at,
@@ -251,13 +251,13 @@ def review_moderated_content(db: Session, admin_user: User, content_id: str, con
         else:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="action must be one of: delete, reinstate, escalate")
     elif content_type == "user":
-        target_user = db.query(User).filter(User.id == content_id, User.is_active.is_(True)).first()
+        target_user = db.query(User).filter(User.id == content_id, User.is_delete.is_(False)).first()
         if not target_user:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
         if action == "reinstate":
             pass
         elif action == "delete":
-            target_user.is_active = False
+            target_user.is_delete = True
             db.query(UserSession).filter(UserSession.user_id == target_user.id).update({"is_active": False})
         elif action == "escalate":
             pass

@@ -9,7 +9,7 @@ def mock_emails(monkeypatch):
 def _get_token(client, email="user@test.com", role="user"):
     path = "/auth/signup" if role == "user" else "/auth/admin/signup"
     response = client.post(path, json={
-        "fullName": "Test User",
+        "firstName": "Test", "lastName": "User",
         "email": email,
         "password": "StrongPass123",
         "consentGiven": True,

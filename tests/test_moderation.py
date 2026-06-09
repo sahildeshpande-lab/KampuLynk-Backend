@@ -18,7 +18,7 @@ def _signup(client, email: str, *, admin: bool = False) -> tuple[str, str]:
     res = client.post(
         endpoint,
         json={
-            "fullName": "Moderation User",
+            "firstName": "Moderation", "lastName": "User",
             "email": email,
             "password": "StrongPass123",
             "consentGiven": True,
