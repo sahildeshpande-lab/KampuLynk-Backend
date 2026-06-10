@@ -22,14 +22,12 @@ from .config import get_s3_config
 
 logger = logging.getLogger(__name__)
 
-# Pattern for valid image keys
-# Allows: alphanumeric, hyphens, underscores, forward slashes, and dots
+
 IMAGE_KEY_PATTERN = r"^[a-zA-Z0-9/_\-\.]+$"
 
-# UUID pattern (simplified)
 UUID_PATTERN = r"[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}"
 
-# Allowed image extensions
+
 ALLOWED_IMAGE_EXTENSIONS = {
     ".jpg",
     ".jpeg",
@@ -75,22 +73,18 @@ def validate_image_key(image_key: str) -> bool:
     if len(image_key) > 500:
         raise ValueError(f"Image key is too long ({len(image_key)} chars, max 500)")
 
-    # Check for path traversal attempts
     if ".." in image_key:
         raise ValueError("Image key contains invalid path traversal pattern (..).")
 
-    # Check for suspicious patterns
     if image_key.startswith("/"):
         raise ValueError("Image key should not start with /")
 
-    # Check allowed characters
     if not re.match(IMAGE_KEY_PATTERN, image_key):
         raise ValueError(
             f"Image key contains invalid characters. "
             f"Allowed: alphanumeric, /, -, _, . Got: {image_key}"
         )
-
-    # Check file extension
+    
     extension = None
     if "." in image_key:
         extension = "." + image_key.split(".")[-1].lower()
@@ -142,13 +136,10 @@ def generate_image_url(image_key: str) -> str:
             "profile_photo_url": url  # Full URL sent to client
         }
     """
-    # Validate the image key first
     validate_image_key(image_key)
 
-    # Get S3 configuration
     config = get_s3_config()
 
-    # Construct the URL
     base_url = config.aws_s3_base_url.rstrip("/")
     clean_key = image_key.lstrip("/")
     
@@ -181,7 +172,6 @@ def get_image_key_from_url(url: str) -> str | None:
         config = get_s3_config()
         base_url = config.aws_s3_base_url.rstrip("/")
 
-        # Check if URL starts with the base URL
         if not url.startswith(base_url):
             logger.warning(
                 "URL does not match configured base URL. URL: %s, Base: %s",
@@ -190,10 +180,8 @@ def get_image_key_from_url(url: str) -> str | None:
             )
             return None
 
-        # Extract the key by removing the base URL
         key = url[len(base_url):].lstrip("/")
 
-        # Validate extracted key
         try:
             validate_image_key(key)
             return key

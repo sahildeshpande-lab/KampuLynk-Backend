@@ -37,6 +37,7 @@ def get_me(current_user: User = Depends(get_current_user)):
 @router.patch("/users/me", response_model=ApiResponse)
 def update_me(payload: UserUpdate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     _apply_user_update(current_user, payload)
+    current_user.is_onboarding = False
     db.commit()
     db.refresh(current_user)
     return api_response("Current user updated", _user_to_schema(current_user))
@@ -60,7 +61,7 @@ def change_password(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    if current_user.login_type != "email" or not _verify_password(payload.currentPassword, current_user.password_hash):
+    if current_user.registration_type != "email" or not _verify_password(payload.currentPassword, current_user.password_hash):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid current password")
     current_user.password_hash = _hash_password(payload.newPassword)
     db.commit()
@@ -97,7 +98,7 @@ def delete_me(current_user: User = Depends(get_current_user), db: Session = Depe
     current_user.is_delete = True
     db.query(UserSession).filter(UserSession.user_id == current_user.id).update({"is_active": False})
     db.commit()
-    return api_response("Current user deleted")
+    return api_response("Your account as been deleted")
 
 
 @router.get("/users/me/export", response_model=ApiResponse)

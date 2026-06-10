@@ -37,7 +37,6 @@ from .image_utils import validate_image_key
 
 logger = logging.getLogger(__name__)
 
-# Allowed file types for images
 ALLOWED_IMAGE_TYPES = {
     "image/jpeg",
     "image/png",
@@ -45,7 +44,7 @@ ALLOWED_IMAGE_TYPES = {
     "image/gif",
 }
 
-# Maximum file size: 10 MB
+
 MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024
 
 
@@ -252,15 +251,11 @@ class S3Service:
             logger.error("File validation failed for %s: %s", original_filename, str(e))
             raise
 
-        # Generate unique key
         image_key = self._generate_unique_key(original_filename, folder)
 
-        # Prepare metadata
         s3_metadata = metadata or {}
         s3_metadata["original-filename"] = original_filename
         s3_metadata["upload-timestamp"] = datetime.utcnow().isoformat()
-
-        # Upload to S3
         try:
             self.s3_client.put_object(
                 Bucket=self.config.aws_s3_bucket_name,
@@ -365,14 +360,12 @@ class S3Service:
             url = s3_service.generate_image_url(image_key)
             # Returns: "https://cdn.kampulynk.com/uploads/2026/06/08/550e8400-e29b-41d4-a716-446655440000.jpg"
         """
-        # Validate image key
         try:
             validate_image_key(image_key)
         except ValueError as e:
             logger.error("Invalid image key: %s", str(e))
             raise S3ValidationError(str(e)) from e
 
-        # Ensure base URL doesn't end with slash, key doesn't start with slash
         base_url = self.config.aws_s3_base_url.rstrip("/")
         clean_key = image_key.lstrip("/")
 

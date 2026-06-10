@@ -7,7 +7,7 @@ from sqlalchemy import exists, or_ ,func
 from sqlalchemy.orm import Session 
 
 from ..db.db import get_db
-from ..models.model import Post, User, UserAcademicInterest
+from ..models.model import Post, User
 from ..models.schemas import ApiResponse
 from ..services import post_service
 from .shared import _public_user, api_response, get_current_user_optional
@@ -32,10 +32,8 @@ def _split_csv(values: list[str] | None) -> list[str]:
 def _interest_exists_any(patterns: list[str]):
     if not patterns:
         return None
-    return exists().where(
-        (UserAcademicInterest.user_id == User.id)
-        & or_(*(UserAcademicInterest.interest.ilike(pattern) for pattern in patterns))
-    )
+    import sqlalchemy as sa
+    return or_(*(User.academic_interests.cast(sa.String).ilike(pattern) for pattern in patterns))
 
 
 def _normalize_interest(value: str) -> str:
@@ -267,9 +265,9 @@ def recommend_posts(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing bearer token")
 
     interests = {
-        _normalize_interest(item.interest)
+        _normalize_interest(item)
         for item in (current_user.academic_interests or [])
-        if item.interest and item.interest.strip()
+        if item and item.strip()
     }
     if not interests:
         return api_response(
@@ -295,9 +293,9 @@ def recommend_posts(
         if not post.author or post.author.is_delete:
             continue
         author_interest_set = {
-            _normalize_interest(item.interest)
+            _normalize_interest(item)
             for item in (post.author.academic_interests or [])
-            if item.interest and item.interest.strip()
+            if item and item.strip()
         }
         overlap = len(interests.intersection(author_interest_set))
         if overlap <= 0:

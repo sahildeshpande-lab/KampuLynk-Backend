@@ -10,7 +10,7 @@ from pwdlib import PasswordHash
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from ..models.model import EmailOTP, LoginRateLimit, User, UserAcademicInterest, UserSession
+from ..models.model import EmailOTP, LoginRateLimit, User, UserSession
 from ..models.schemas import AdminUserCreate, SignupRequest, UserUpdate
 from . import invitation_service
 
@@ -78,13 +78,14 @@ def jwt_decode(token_value: str) -> dict:
 def generate_otp_code() -> str: return f"{secrets.randbelow(1_000_000):06d}"
 
 def otp_not_expired(otp: EmailOTP) -> bool:
-    if otp.is_expire:
+    if otp.is_expired:
         return False
     created_at = otp.created_at
     if created_at.tzinfo is None:
         created_at = created_at.replace(tzinfo=timezone.utc)
-    if datetime.now(timezone.utc) > created_at + timedelta(minutes=10):
-        otp.is_expire = True
+    # OTP is valid for 2 minutes
+    if datetime.now(timezone.utc) > created_at + timedelta(minutes=2):
+        otp.is_expired = True
         return False
     return True
 
@@ -176,7 +177,7 @@ def create_user_from_payload(payload: SignupRequest | AdminUserCreate, role: str
         email=payload.email,
         password_hash=hash_password(payload.password),
         role=role,
-        login_type=getattr(payload, "loginType", "email"),
+        registration_type=getattr(payload, "loginType", "email"),
         profile_photo_url=getattr(payload, "profilePhotoUrl", None),
         banner_photo_url=getattr(payload, "bannerPhotoUrl", None),
         university=payload.university,
@@ -194,9 +195,7 @@ def create_user_from_payload(payload: SignupRequest | AdminUserCreate, role: str
         is_email_verified=getattr(payload, "isEmailVerified", False),
         is_delete=getattr(payload, "isDelete", False),
     )
-    user.academic_interests = [
-        UserAcademicInterest(interest=interest) for interest in getattr(payload, "academicInterests", [])
-    ]
+    user.academic_interests = getattr(payload, "academicInterests", []) or []
     preferences = payload_dict(getattr(payload, "notificationPreferences", None)) or {
         "email": True,
         "push": True,
@@ -208,7 +207,7 @@ def create_user_from_payload(payload: SignupRequest | AdminUserCreate, role: str
 
 
 def calculate_completeness(user: User) -> int:
-    interests = [item.interest for item in user.academic_interests]
+    interests = user.academic_interests or []
     profile_fields: Iterable[object] = (
         user.first_name,
         user.last_name,
@@ -227,7 +226,7 @@ def calculate_completeness(user: User) -> int:
     return round((completed / 12) * 100)
 
 
-def academic_interests(user: User) -> list[str]: return [item.interest for item in user.academic_interests]
+def academic_interests(user: User) -> list[str]: return user.academic_interests or []
 
 
 def notification_preferences(user: User) -> dict[str, bool]:
@@ -243,7 +242,7 @@ def user_to_schema(user: User) -> dict:
         "lastName": user.last_name,
         "email": user.email,
         "role": user.role,
-        "loginType": user.login_type,
+        "loginType": user.registration_type,
         "profilePhotoUrl": user.profile_photo_url,
         "bannerPhotoUrl": user.banner_photo_url,
         "university": user.university,
@@ -270,7 +269,7 @@ def user_to_schema(user: User) -> dict:
         "connectionsCount": user.connections_count,
         "createdAt": user.created_at,
         "updatedAt": user.updated_at,
-        "is_onboarding": not user.is_email_verified,
+        "is_onboarding": user.is_onboarding,
         "connectedUserIds": user.connected_user_ids or [],
         "followingUserIds": user.following_user_ids or [],
         "blockedUserIds": user.blocked_user_ids or [],
@@ -333,7 +332,7 @@ def apply_user_update(user: User, payload: UserUpdate) -> User:
     changes = payload.model_dump(exclude_unset=True)
     for public_name, value in changes.items():
         if public_name == "academicInterests":
-            user.academic_interests = [UserAcademicInterest(interest=interest) for interest in value]
+            user.academic_interests = value or []
             continue
         if public_name == "notificationPreferences":
             preferences = payload_dict(value)
@@ -359,6 +358,6 @@ def auth_payload(session: UserSession, user: User) -> dict:
     return {
         "accessToken": access_token,
         "refreshToken": session.refresh_token,
-        "is_onboarding": not user.is_email_verified,
+        # "is_onboarding": user.is_onboarding,
         "user": user_to_schema(user),
     }

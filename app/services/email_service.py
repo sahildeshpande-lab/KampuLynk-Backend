@@ -181,7 +181,7 @@ def build_password_changed_email_html(full_name: str | None = None) -> str:
     return _render_email_layout("Password Changed Successfully", body_html)
 
 
-def send_otp_email(to_email: str, otp: str, otp_purpose: str = "email_verification") -> bool:
+def send_otp_email(to_email: str, otp: str, otp_purpose: str = "password_reset") -> bool:
     title, _, _ = _otp_template_details(otp_purpose)
     subject = f"KampuLynk {title}"
     return _send_email(to_email, subject, build_otp_email_html(otp, otp_purpose))

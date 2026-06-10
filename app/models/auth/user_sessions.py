@@ -22,4 +22,5 @@ class UserSession(Base):
         nullable=False,
     )
 
-    user = relationship("User", back_populates="sessions")
+    user = relationship('User', back_populates='sessions')
+    devices = relationship('UserDevice', back_populates='session', cascade='all, delete-orphan')

@@ -29,10 +29,18 @@ def _get_token(client, email, full_name="Test User", university=None, major=None
     )
     token = response.json()["data"]["accessToken"]
 
-    patch = {"profileVisibility": visibility}
+    if visibility:
+        client.patch(
+            "/users/me/visibility",
+            headers={"Authorization": f"Bearer {token}"},
+            json={"profileVisibility": visibility},
+        )
     if location:
-        patch["location"] = location
-    client.patch("/users/me", headers={"Authorization": f"Bearer {token}"}, json=patch)
+        client.patch(
+            "/users/me",
+            headers={"Authorization": f"Bearer {token}"},
+            json={"location": location},
+        )
 
     return token, response.json()["data"]["user"]["id"]
 

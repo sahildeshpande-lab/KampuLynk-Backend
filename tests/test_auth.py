@@ -63,7 +63,13 @@ def test_resend_otp(client, monkeypatch):
         "educationLevel": "bachelors"
     })
     
-    # Resend
+    from datetime import datetime, timezone, timedelta
+    class MockDatetime:
+        @classmethod
+        def now(cls, tz=None):
+            return datetime.now(timezone.utc) + timedelta(minutes=3)
+    monkeypatch.setattr("app.services.auth.datetime", MockDatetime)
+
     response = client.post("/auth/resend-otp", json={"email": email})
     assert response.status_code == 200
     assert len(captured_otp) == 2 

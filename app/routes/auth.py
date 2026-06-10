@@ -35,12 +35,16 @@ def verify_otp(payload: VerifyOTPRequest, db: Session = Depends(get_db)):
 
 @router.post("/auth/resend-otp", response_model=ApiResponse)
 def resend_otp(payload: ResendOTPRequest, db: Session = Depends(get_db)):
-    return api_response("OTP sent", auth_service.resend_user_otp(db, payload))
+    res = auth_service.resend_user_otp(db, payload)
+    msg = res.pop("message", "OTP sent")
+    return api_response(msg, res)
 
 
 @router.post("/auth/forgot-password", response_model=ApiResponse)
 def forgot_password(payload: ForgotPasswordRequest, db: Session = Depends(get_db)):
-    return api_response("If the account exists, an OTP was sent", auth_service.forgot_user_password(db, payload))
+    res = auth_service.forgot_user_password(db, payload)
+    msg = res.pop("message", "OTP as been send to the requested email ID")
+    return api_response(msg, res)
 
 
 @router.post("/auth/reset-password", response_model=ApiResponse)

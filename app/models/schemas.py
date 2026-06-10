@@ -6,7 +6,7 @@ from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
 Role = Literal["user", "superadmin", "moderator", "viewer"]
 LoginType = Literal["email", "google", "apple"]
 SocialProvider = Literal["google", "apple"]
-EducationLevel = Literal["Bachelors", "Masters", "Doctorate", "Postdoctoral", "Professional degree"]
+EducationLevel = Literal["Bachelors", "Masters", "Doctorate", "Postdoctoral", "JD","MD"]
 ProfileVisibility = Literal["public", "connections_only", "private"]
 NotificationTargetType = Literal["direct", "topic", "broadcast"]
 PostContentFormat = Literal["plain_text", "rich_text"]
@@ -21,8 +21,8 @@ EMAIL_EXAMPLE = "john@university.edu"
 # PROFILE_PHOTO_EXAMPLE = "https://cdn.kampulynk.com/users/profiles/2026/06/08/550e8400-e29b-41d4-a716-446655440000.png"
 # BANNER_PHOTO_EXAMPLE = "https://cdn.kampulynk.com/users/banners/2026/06/08/e8bb6c79-9b96-4b0b-a0cd-0836f64c09c5.png"
 
-PROFILE_PHOTO_EXAMPLE = "https://kampulynk-user-media.s3.amazonaws.com/users/sample/profile.png"
-BANNER_PHOTO_EXAMPLE = "https://kampulynk-user-media.s3.amazonaws.com/users/sample/banner.png"
+PROFILE_PHOTO_EXAMPLE = "users/sample/profile.png"
+BANNER_PHOTO_EXAMPLE = "users/sample/banner.png"
 
 def email_field():
     return Field(pattern=EMAIL_PATTERN, examples=[EMAIL_EXAMPLE])
@@ -351,7 +351,7 @@ class User(CamelModel):
     connectionsCount: int
     createdAt: datetime
     updatedAt: datetime
-    isOnboarding: int = 1
+    # is_onboarding: bool = True
 
 
 class PublicUser(CamelModel):

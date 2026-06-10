@@ -1,3 +1,4 @@
+from datetime import datetime, timezone, timedelta
 from fastapi import HTTPException, Request, status
 from sqlalchemy.orm import Session
 
@@ -192,14 +193,16 @@ def verify_user_otp(db: Session, payload: VerifyOTPRequest) -> dict:
         EmailOTP.user_id == user.id,
         EmailOTP.code == payload.otp,
         EmailOTP.is_used.is_(False),
-        EmailOTP.is_expire.is_(False),
+        EmailOTP.is_expired.is_(False),
     ).order_by(EmailOTP.created_at.desc()).first()
     if not otp:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid OTP")
     if not otp_not_expired(otp):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="OTP expired")
     otp.is_used = True
+    otp.is_expired = False
     user.is_email_verified = True
+    user.email_verified_at = datetime.now(timezone.utc)
     db.commit()
     sent = send_account_created(user.email, user.first_name, user.last_name)
     notification = create_in_app_notification(
@@ -219,6 +222,25 @@ def resend_user_otp(db: Session, payload: ResendOTPRequest) -> dict:
     user = get_user_by_email(db, payload.email)
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    
+    latest_otp = (
+        db.query(EmailOTP)
+        .filter(EmailOTP.user_id == user.id, EmailOTP.purpose == "email_verification")
+        .order_by(EmailOTP.created_at.desc())
+        .first()
+    )
+    if latest_otp:
+        created_at = latest_otp.created_at
+        if created_at.tzinfo is None:
+            created_at = created_at.replace(tzinfo=timezone.utc)
+        if datetime.now(timezone.utc) < created_at + timedelta(minutes=2):
+            return {
+                "email": user.email,
+                "emailSent": False,
+                "message": "Otp as been generated please check email . Wait for 2 mins to regenerate again ."
+            }
+
+    expire_actives_otp(db,user,purpose="email_verification")
     otp = create_otp(db, user)
     sent = send_otp(user.email, otp.code)
     notification = create_in_app_notification(
@@ -233,12 +255,33 @@ def resend_user_otp(db: Session, payload: ResendOTPRequest) -> dict:
     dispatch_created_push_notification(db, notification)
     return {"email": user.email, "emailSent": sent}
 
+def expire_actives_otp(db:Session,user:User,purpose:str)->None :
+    db.query(EmailOTP).filter(EmailOTP.user_id==user.id,EmailOTP.purpose==purpose,EmailOTP.is_used==False,EmailOTP.is_expired==False).update({EmailOTP.is_expired==True},synchronize_session=True)
+    db.commit()
 
 def forgot_user_password(db: Session, payload: ForgotPasswordRequest) -> dict:
     user = get_user_by_email(db, payload.email)
-    if not user or user.is_delete or user.login_type != "email":
-        return {"email": payload.email}
+    if not user or user.is_delete :
+        return {"email": payload.email, "emailSent": False}
 
+    latest_otp = (
+        db.query(EmailOTP)
+        .filter(EmailOTP.user_id == user.id, EmailOTP.purpose == "password_reset")
+        .order_by(EmailOTP.created_at.desc())
+        .first()
+    )
+    if latest_otp:
+        created_at = latest_otp.created_at
+        if created_at.tzinfo is None:
+            created_at = created_at.replace(tzinfo=timezone.utc)
+        if datetime.now(timezone.utc) < created_at + timedelta(minutes=2):
+            return {
+                "email": payload.email,
+                "emailSent": False,
+                "message": "Otp as been generated please check email . Wait for 2 mins to regenerate again ."
+            }
+
+    expire_actives_otp(db,user,purpose="password_reset")
     otp = EmailOTP(user_id=user.id, code=generate_otp_code(), purpose="password_reset")
     db.add(otp)
     db.commit()
@@ -268,7 +311,7 @@ def reset_user_password(db: Session, payload: ResetPasswordRequest) -> dict:
             EmailOTP.code == payload.otp,
             EmailOTP.purpose == "password_reset",
             EmailOTP.is_used.is_(False),
-            EmailOTP.is_expire.is_(False),
+            EmailOTP.is_expired.is_(False),
         )
         .order_by(EmailOTP.created_at.desc())
         .first()
@@ -295,7 +338,7 @@ def login_user(db: Session, payload: LoginRequest, request: Request) -> dict:
     upgrade_password_hash_if_needed(db, user, payload.password)
     clear_login_rate_limit(db, payload.email, ip)
     session = create_session(db, user)
-    track_user_activity(db, user, "login", {"loginType": user.login_type})
+    track_user_activity(db, user, "login", {"loginType": user.registration_type})
     return auth_payload(session, user)
 
 
@@ -315,7 +358,7 @@ def login_for_access_token(db: Session, email: str, password: str, request: Requ
     upgrade_password_hash_if_needed(db, user, password)
     clear_login_rate_limit(db, email, ip)
     session = create_session(db, user)
-    track_user_activity(db, user, "login", {"loginType": user.login_type})
+    track_user_activity(db, user, "login", {"loginType": user.registration_type})
     return oauth2_token_payload(session, user)
 
 
@@ -327,7 +370,7 @@ def social_login_user(db: Session, payload: OAuthRequest) -> dict:
             first_name=payload.firstName or payload.email.split("@")[0],
             last_name=payload.lastName or "",
             email=payload.email,
-            login_type=provider,
+            registration_type=provider,
             profile_photo_url=payload.profilePhotoUrl,
             is_email_verified=True,
             consent_given=True,
@@ -338,7 +381,7 @@ def social_login_user(db: Session, payload: OAuthRequest) -> dict:
         db.commit()
         db.refresh(user)
     session = create_session(db, user)
-    track_user_activity(db, user, "login", {"loginType": user.login_type})
+    track_user_activity(db, user, "login", {"loginType": user.registration_type})
     return auth_payload(session, user)
 
 
