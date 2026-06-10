@@ -190,14 +190,14 @@ def migrate_legacy_users_table():
             connection.execute(
                 text("alter table posts add column if not exists engagement_enabled boolean not null default true")
             )
-            """,
+        daily_analytics_statements=[
             "create unique index if not exists uq_daily_analytics_date on daily_analytics (date)",
             "create index if not exists ix_daily_analytics_date on daily_analytics (date)",
         ]
         for statement in daily_analytics_statements:
             connection.execute(text(statement))
 
-        user_device_statements = [
+        user_device_statements =[
             """
             create table if not exists user_devices (
                 id varchar(36) primary key,
@@ -235,7 +235,7 @@ def migrate_legacy_users_table():
             "create index if not exists ix_spam_keywords_keyword on spam_keywords (keyword)",
             "create index if not exists ix_spam_keywords_keyword_type on spam_keywords (keyword_type)",
             "create index if not exists ix_spam_keywords_is_active on spam_keywords (is_active)",
-        ]
+    ]
         for statement in spam_keywords_statements:
             connection.execute(text(statement))
 
