@@ -129,8 +129,8 @@ The Playwright API test starts a temporary local API server and uses a temporary
 ## Notes
 
 - OTP codes are randomly generated 6-digit numbers.
-- OTP verification expires 10 minutes after generation.
-- `/auth/resend-otp` currently returns the OTP in response data for local/testing use (temporary and security-sensitive).
+- OTP verification expires 2 minutes after generation.
+- OTP resend cooldown: A 2-minute cooldown is enforced between OTP generation requests for both `/auth/resend-otp` and `/auth/forgot-password`. If requested within 2 minutes, a message informing the user to wait is returned.
 - Notification email templates use the KampuLynk navy/crimson brand palette.
 - Push notifications are currently queued in notification delivery status; provider delivery can be connected when device tokens/APNs/FCM are added.
 - Signup creates users with `role: "user"`.

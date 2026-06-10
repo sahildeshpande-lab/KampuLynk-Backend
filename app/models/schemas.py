@@ -6,7 +6,7 @@ from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
 Role = Literal["user", "superadmin", "moderator", "viewer"]
 LoginType = Literal["email", "google", "apple"]
 SocialProvider = Literal["google", "apple"]
-EducationLevel = Literal["Bachelors", "Masters", "Doctorate", "Postdoctoral", "Professional degree"]
+EducationLevel = Literal["Bachelors", "Masters", "Doctorate", "Postdoctoral", "JD","MD"]
 ProfileVisibility = Literal["public", "connections_only", "private"]
 NotificationTargetType = Literal["direct", "topic", "broadcast"]
 PostContentFormat = Literal["plain_text", "rich_text"]
@@ -17,9 +17,12 @@ PostStatus = Literal["draft", "published"]
 EngagementAction = Literal["like", "comment", "repost"]
 EMAIL_PATTERN = r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
 EMAIL_EXAMPLE = "john@university.edu"
-PROFILE_PHOTO_EXAMPLE = "https://kampulynk-user-media.s3.amazonaws.com/users/sample/profile.png"
-BANNER_PHOTO_EXAMPLE = "https://kampulynk-user-media.s3.amazonaws.com/users/sample/banner.png"
 
+# PROFILE_PHOTO_EXAMPLE = "https://cdn.kampulynk.com/users/profiles/2026/06/08/550e8400-e29b-41d4-a716-446655440000.png"
+# BANNER_PHOTO_EXAMPLE = "https://cdn.kampulynk.com/users/banners/2026/06/08/e8bb6c79-9b96-4b0b-a0cd-0836f64c09c5.png"
+
+PROFILE_PHOTO_EXAMPLE = "users/sample/profile.png"
+BANNER_PHOTO_EXAMPLE = "users/sample/banner.png"
 
 def email_field():
     return Field(pattern=EMAIL_PATTERN, examples=[EMAIL_EXAMPLE])
@@ -89,7 +92,18 @@ class SendNotificationRequest(CamelModel):
 
 
 class UserBase(CamelModel):
-    fullName: str = Field(min_length=1, max_length=150)
+    firstName: str | None = Field(default=None, min_length=1, max_length=75)
+    lastName: str | None = Field(default=None, min_length=1, max_length=75)
+
+    @model_validator(mode="before")
+    @classmethod
+    def default_names(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            if not data.get("firstName") and not cls.__name__.endswith("Update"):
+                data["firstName"] = "First"
+            if not data.get("lastName") and not cls.__name__.endswith("Update"):
+                data["lastName"] = "Last"
+        return data
     email: str = email_field()
     role: Role = "user"
     loginType: LoginType = "email"
@@ -107,7 +121,7 @@ class UserBase(CamelModel):
     completenessScore: int = Field(default=0, ge=0, le=100)
     notificationPreferences: NotificationPreferences = Field(default_factory=NotificationPreferences)
     isEmailVerified: bool = False
-    isActive: bool = True
+    isDelete: bool = False
     consentGiven: bool = False
     referenceCode: str | None = None
     invitationCode: str | None = None
@@ -119,6 +133,22 @@ class UserBase(CamelModel):
     def normalize_email(cls, value: str) -> str:
         return value.lower()
 
+    @field_validator("educationLevel", mode="before")
+    @classmethod
+    def normalize_education_level(cls, value: str | None) -> str | None:
+        if not value:
+            return value
+        mapping = {
+            "bachelors": "Bachelors",
+            "masters": "Masters",
+            "doctorate": "Doctorate",
+            "postdoctoral": "Postdoctoral",
+            "professional degree": "Professional degree",
+            "professional": "Professional degree",
+        }
+        val_lower = value.strip().lower()
+        return mapping.get(val_lower, value)
+
 class UserCreate(UserBase):
     password: str = Field(min_length=8)
 
@@ -129,7 +159,18 @@ class AdminUserCreate(UserCreate):
 
 
 class SignupRequest(CamelModel):
-    fullName: str = Field(min_length=1, max_length=150)
+    firstName: str | None = Field(default=None, min_length=1, max_length=75)
+    lastName: str | None = Field(default=None, min_length=1, max_length=75)
+
+    @model_validator(mode="before")
+    @classmethod
+    def default_names(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            if not data.get("firstName"):
+                data["firstName"] = "First"
+            if not data.get("lastName"):
+                data["lastName"] = "Last"
+        return data
     email: str = email_field()
     password: str = Field(min_length=8)
     role: Role = "user"
@@ -145,11 +186,28 @@ class SignupRequest(CamelModel):
     def normalize_email(cls, value: str) -> str:
         return value.lower()
 
+    @field_validator("educationLevel", mode="before")
+    @classmethod
+    def normalize_education_level(cls, value: str | None) -> str | None:
+        if not value:
+            return value
+        mapping = {
+            "bachelors": "Bachelors",
+            "masters": "Masters",
+            "doctorate": "Doctorate",
+            "postdoctoral": "Postdoctoral",
+            "professional degree": "Professional degree",
+            "professional": "Professional degree",
+        }
+        val_lower = value.strip().lower()
+        return mapping.get(val_lower, value)
+
 class OAuthRequest(CamelModel):
     provider: SocialProvider = Field(examples=["google"])
     idToken: str = Field(min_length=1)
     email: str = email_field()
-    fullName: str | None = None
+    firstName: str | None = None
+    lastName: str | None = None
     profilePhotoUrl: str | None = Field(default=None, examples=[PROFILE_PHOTO_EXAMPLE])
 
     @field_validator("email")
@@ -223,7 +281,25 @@ class ChangePasswordRequest(CamelModel):
 
 
 class UserUpdate(CamelModel):
-    fullName: str | None = Field(default=None, min_length=1, max_length=150)
+    model_config = ConfigDict(extra="forbid")
+    firstName: str | None = Field(default=None, min_length=1, max_length=75)
+    lastName: str | None = Field(default=None, min_length=1, max_length=75)
+
+    @field_validator("educationLevel", mode="before")
+    @classmethod
+    def normalize_education_level(cls, value: str | None) -> str | None:
+        if not value:
+            return value
+        mapping = {
+            "bachelors": "Bachelors",
+            "masters": "Masters",
+            "doctorate": "Doctorate",
+            "postdoctoral": "Postdoctoral",
+            "professional degree": "Professional degree",
+            "professional": "Professional degree",
+        }
+        val_lower = value.strip().lower()
+        return mapping.get(val_lower, value)
     profilePhotoUrl: str | None = Field(default=None, examples=[PROFILE_PHOTO_EXAMPLE])
     bannerPhotoUrl: str | None = Field(default=None, examples=[BANNER_PHOTO_EXAMPLE])
     university: str | None = None
@@ -234,11 +310,7 @@ class UserUpdate(CamelModel):
     academicInterests: list[str] | None = None
     graduationDate: str | None = Field(default=None, pattern=r"^\d{4}-\d{2}$")
     location: str | None = None
-    profileVisibility: ProfileVisibility | None = None
     notificationPreferences: NotificationPreferences | None = None
-    consentGiven: bool | None = None
-    referenceCode: str | None = None
-    onlinePresence: bool | None = None
     welcomeMessage: str | None = None
 
 
@@ -248,7 +320,8 @@ class ProfileVisibilityUpdate(CamelModel):
 
 class User(CamelModel):
     id: str
-    fullName: str
+    firstName: str
+    lastName: str
     email: str = Field(examples=[EMAIL_EXAMPLE])
     role: Role
     loginType: LoginType
@@ -266,7 +339,7 @@ class User(CamelModel):
     completenessScore: int
     notificationPreferences: dict[str, bool]
     isEmailVerified: bool
-    isActive: bool
+    isDelete: bool
     consentGiven: bool
     referenceCode: str | None
     invitationCode: str | None
@@ -278,12 +351,13 @@ class User(CamelModel):
     connectionsCount: int
     createdAt: datetime
     updatedAt: datetime
-    isOnboarding: int = 1
+    # is_onboarding: bool = True
 
 
 class PublicUser(CamelModel):
     id: str
-    fullName: str
+    firstName: str
+    lastName: str
     profilePhotoUrl: str | None = Field(examples=[PROFILE_PHOTO_EXAMPLE])
     university: str | None
     major: str | None

@@ -3,11 +3,11 @@ from __future__ import annotations
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
-from sqlalchemy import exists, or_
-from sqlalchemy.orm import Session
+from sqlalchemy import exists, or_ ,func
+from sqlalchemy.orm import Session 
 
 from ..db.db import get_db
-from ..models.model import Post, User, UserAcademicInterest
+from ..models.model import Post, User
 from ..models.schemas import ApiResponse
 from ..services import post_service
 from .shared import _public_user, api_response, get_current_user_optional
@@ -32,10 +32,8 @@ def _split_csv(values: list[str] | None) -> list[str]:
 def _interest_exists_any(patterns: list[str]):
     if not patterns:
         return None
-    return exists().where(
-        (UserAcademicInterest.user_id == User.id)
-        & or_(*(UserAcademicInterest.interest.ilike(pattern) for pattern in patterns))
-    )
+    import sqlalchemy as sa
+    return or_(*(User.academic_interests.cast(sa.String).ilike(pattern) for pattern in patterns))
 
 
 def _normalize_interest(value: str) -> str:
@@ -85,7 +83,7 @@ def search_users(
     hashtag_terms = [h.lstrip("#").strip() for h in hashtags if h and h.strip()]
     hashtag_terms = [t for t in hashtag_terms if t]
 
-    base = db.query(User).filter(User.is_active.is_(True))
+    base = db.query(User).filter(User.is_delete.is_(False))
 
     # Exclude self and blocked relationships when authenticated
     if current_user:
@@ -122,7 +120,7 @@ def search_users(
             username_clause = User.email.ilike(f"{text}@%")
             base = base.filter(
                 or_(
-                    User.full_name.ilike(like),
+                    func.concat(User.first_name, ' ', User.last_name).ilike(like),
                     User.email.ilike(like),
                     username_clause,
                     User.bio.ilike(like),
@@ -164,7 +162,7 @@ def filter_users(
 
     interests = _split_csv(interest)
 
-    base = db.query(User).filter(User.is_active.is_(True))
+    base = db.query(User).filter(User.is_delete.is_(False))
 
     if current_user:
         base = base.filter(User.id != current_user.id)
@@ -216,7 +214,7 @@ def recommend_users(
     candidate_users = (
         db.query(User)
         .filter(
-            User.is_active.is_(True),
+            User.is_delete.is_(False),
             User.profile_visibility != "private",
             ~User.id.in_(excluded_ids) if excluded_ids else True,
         )
@@ -267,9 +265,9 @@ def recommend_posts(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing bearer token")
 
     interests = {
-        _normalize_interest(item.interest)
+        _normalize_interest(item)
         for item in (current_user.academic_interests or [])
-        if item.interest and item.interest.strip()
+        if item and item.strip()
     }
     if not interests:
         return api_response(
@@ -292,12 +290,12 @@ def recommend_posts(
 
     ranked_posts: list[tuple[int, Post]] = []
     for post in posts:
-        if not post.author or not post.author.is_active:
+        if not post.author or post.author.is_delete:
             continue
         author_interest_set = {
-            _normalize_interest(item.interest)
+            _normalize_interest(item)
             for item in (post.author.academic_interests or [])
-            if item.interest and item.interest.strip()
+            if item and item.strip()
         }
         overlap = len(interests.intersection(author_interest_set))
         if overlap <= 0:

@@ -60,12 +60,60 @@ def migrate_legacy_users_table():
             )
         ).scalar()
 
-        connection.execute(text("alter table users add column if not exists full_name varchar(150)"))
+        full_name_exists = connection.execute(
+            text(
+                """
+                select exists (
+                    select 1
+                    from information_schema.columns
+                    where table_schema = 'public'
+                      and table_name = 'users'
+                      and column_name = 'full_name'
+                )
+                """
+            )
+        ).scalar()
+
+        if full_name_exists:
+            connection.execute(text("alter table users alter column full_name drop not null"))
         if name_exists:
-            connection.execute(text("update users set full_name = coalesce(full_name, name, email)"))
+            connection.execute(text("alter table users alter column name drop not null"))
+
+        is_active_exists = connection.execute(
+            text(
+                """
+                select exists (
+                    select 1
+                    from information_schema.columns
+                    where table_schema = 'public'
+                      and table_name = 'users'
+                      and column_name = 'is_active'
+                )
+                """
+            )
+        ).scalar()
+
+        if is_active_exists:
+            connection.execute(text("alter table users alter column is_active drop not null"))
+
+        connection.execute(text("alter table users add column if not exists first_name varchar(75)"))
+        connection.execute(text("alter table users add column if not exists last_name varchar(75)"))
+        if name_exists:
+            connection.execute(text("update users set first_name = coalesce(first_name, split_part(coalesce(full_name, name, email), ' ', 1))"))
+            connection.execute(text("update users set last_name = coalesce(last_name, split_part(coalesce(full_name, name, email) || ' ', ' ', 2))"))
+        elif full_name_exists:
+            connection.execute(text(
+            "update users set first_name = coalesce(first_name, split_part(coalesce(full_name, email), ' ', 1))"
+            ))
+            connection.execute(text(
+                "update users set last_name = coalesce(last_name, split_part(coalesce(full_name, email) || ' ', ' ', 2))"
+            ))
         else:
-            connection.execute(text("update users set full_name = coalesce(full_name, email)"))
-        connection.execute(text("alter table users alter column full_name set not null"))
+            connection.execute(text(
+                "update users set first_name = coalesce(first_name, email)"
+            ))
+        connection.execute(text("alter table users alter column first_name set not null"))
+        connection.execute(text("alter table users alter column last_name set not null"))
 
         statements = [
             "alter table users add column if not exists password_hash varchar(255)",
@@ -86,7 +134,7 @@ def migrate_legacy_users_table():
             "alter table users add column if not exists completeness_score integer not null default 0",
             """alter table users add column if not exists notification_preferences json not null default '{"email": true, "push": true, "inApp": true}'::json""",
             "alter table users add column if not exists is_email_verified boolean not null default false",
-            "alter table users add column if not exists is_active boolean not null default true",
+            "alter table users add column if not exists is_delete boolean not null default false",
             "alter table users add column if not exists consent_given boolean not null default false",
             "alter table users add column if not exists invitation_code varchar(100)",
             "alter table users add column if not exists online_presence boolean not null default false",
@@ -111,6 +159,14 @@ def migrate_legacy_users_table():
         ]
         for statement in statements:
             connection.execute(text(statement))
+
+        # Add email_otps migrations
+        email_otps_exists = connection.execute(
+            text("select to_regclass('public.email_otps') is not null")
+        ).scalar()
+        if email_otps_exists:
+            connection.execute(text("alter table email_otps add column if not exists is_expired boolean not null default false"))
+            connection.execute(text("alter table email_otps add column if not exists is_expire boolean not null default false"))
 
         notification_statements = [
             "alter table user_notifications add column if not exists notification_type varchar(80) not null default 'send'",

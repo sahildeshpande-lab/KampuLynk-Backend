@@ -2,9 +2,10 @@ fastapi
 uvicorn[standard]
 sqlalchemy
 psycopg2-binary
-PyJWT
+datetime
 pwdlib[argon2]
 python-multipart
+jinja2
 pytest
 pytest-cov
 pytest-asyncio
@@ -13,3 +14,6 @@ playwright
 pytest-playwright
 sendgrid
 firebase-admin
+boto3
+pydantic-settings
+alembic

@@ -10,7 +10,7 @@ from pwdlib import PasswordHash
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from ..models.model import EmailOTP, LoginRateLimit, User, UserAcademicInterest, UserNotificationPreference, UserSession
+from ..models.model import EmailOTP, LoginRateLimit, User, UserSession
 from ..models.schemas import AdminUserCreate, SignupRequest, UserUpdate
 from . import invitation_service
 
@@ -78,10 +78,16 @@ def jwt_decode(token_value: str) -> dict:
 def generate_otp_code() -> str: return f"{secrets.randbelow(1_000_000):06d}"
 
 def otp_not_expired(otp: EmailOTP) -> bool:
+    if otp.is_expired:
+        return False
     created_at = otp.created_at
     if created_at.tzinfo is None:
         created_at = created_at.replace(tzinfo=timezone.utc)
-    return datetime.now(timezone.utc) <= created_at + timedelta(minutes=10)
+    # OTP is valid for 2 minutes
+    if datetime.now(timezone.utc) > created_at + timedelta(minutes=2):
+        otp.is_expired = True
+        return False
+    return True
 
 
 def credentials_exception(detail: str = "Could not validate credentials") -> HTTPException:
@@ -100,7 +106,7 @@ def current_user_from_token(db: Session, access_token: str | None) -> User | Non
     if not session_id:
         return None
     session = db.query(UserSession).filter(UserSession.id == session_id, UserSession.is_active.is_(True)).first()
-    if not session or not session.user or not session.user.is_active:
+    if not session or not session.user or session.user.is_delete:
         return None
     return session.user
 
@@ -113,7 +119,7 @@ def current_session_from_token(db: Session, access_token: str | None) -> UserSes
     if not session_id:
         raise credentials_exception("Invalid session")
     session = db.query(UserSession).filter(UserSession.id == session_id, UserSession.is_active.is_(True)).first()
-    if not session or not session.user or not session.user.is_active:
+    if not session or not session.user or session.user.is_delete:
         raise credentials_exception("Invalid session")
     return session
 
@@ -166,11 +172,12 @@ def payload_dict(value): return value.model_dump() if hasattr(value, "model_dump
 
 def create_user_from_payload(payload: SignupRequest | AdminUserCreate, role: str = "user") -> User:
     user = User(
-        full_name=payload.fullName,
+        first_name=payload.firstName,
+        last_name=payload.lastName,
         email=payload.email,
         password_hash=hash_password(payload.password),
         role=role,
-        login_type=getattr(payload, "loginType", "email"),
+        registration_type=getattr(payload, "loginType", "email"),
         profile_photo_url=getattr(payload, "profilePhotoUrl", None),
         banner_photo_url=getattr(payload, "bannerPhotoUrl", None),
         university=payload.university,
@@ -186,29 +193,24 @@ def create_user_from_payload(payload: SignupRequest | AdminUserCreate, role: str
         online_presence=getattr(payload, "onlinePresence", False),
         welcome_message=getattr(payload, "welcomeMessage", None),
         is_email_verified=getattr(payload, "isEmailVerified", False),
-        is_active=getattr(payload, "isActive", True),
+        is_delete=getattr(payload, "isDelete", False),
     )
-    user.academic_interests = [
-        UserAcademicInterest(interest=interest) for interest in getattr(payload, "academicInterests", [])
-    ]
+    user.academic_interests = getattr(payload, "academicInterests", []) or []
     preferences = payload_dict(getattr(payload, "notificationPreferences", None)) or {
         "email": True,
         "push": True,
         "inApp": True,
     }
-    user.notification_preferences = UserNotificationPreference(
-        email=preferences["email"],
-        push=preferences["push"],
-        in_app=preferences["inApp"],
-    )
+    user.notification_preferences = preferences
     user.completeness_score = calculate_completeness(user)
     return user
 
 
 def calculate_completeness(user: User) -> int:
-    interests = [item.interest for item in user.academic_interests]
+    interests = user.academic_interests or []
     profile_fields: Iterable[object] = (
-        user.full_name,
+        user.first_name,
+        user.last_name,
         user.email,
         user.profile_photo_url,
         user.university,
@@ -221,27 +223,26 @@ def calculate_completeness(user: User) -> int:
         user.consent_given,
     )
     completed = sum(1 for value in profile_fields if bool(value))
-    return round((completed / 11) * 100)
+    return round((completed / 12) * 100)
 
 
-def academic_interests(user: User) -> list[str]: return [item.interest for item in user.academic_interests]
+def academic_interests(user: User) -> list[str]: return user.academic_interests or []
 
 
 def notification_preferences(user: User) -> dict[str, bool]:
     preferences = user.notification_preferences
-    return {"email": True, "push": True, "inApp": True} if not preferences else {
-        "email": preferences.email, "push": preferences.push, "inApp": preferences.in_app
-    }
+    return {"email": True, "push": True, "inApp": True} if not preferences else preferences
 
 
 def user_to_schema(user: User) -> dict:
     invite_code = (user.invitation_code or "").strip().upper() or None
     return {
         "id": user.id,
-        "fullName": user.full_name,
+        "firstName": user.first_name,
+        "lastName": user.last_name,
         "email": user.email,
         "role": user.role,
-        "loginType": user.login_type,
+        "loginType": user.registration_type,
         "profilePhotoUrl": user.profile_photo_url,
         "bannerPhotoUrl": user.banner_photo_url,
         "university": user.university,
@@ -256,7 +257,7 @@ def user_to_schema(user: User) -> dict:
         "completenessScore": user.completeness_score,
         "notificationPreferences": notification_preferences(user),
         "isEmailVerified": user.is_email_verified,
-        "isActive": user.is_active,
+        "isDelete": user.is_delete,
         "consentGiven": user.consent_given,
         "referenceCode": user.reference_code,
         "invitationCode": invite_code,
@@ -268,7 +269,7 @@ def user_to_schema(user: User) -> dict:
         "connectionsCount": user.connections_count,
         "createdAt": user.created_at,
         "updatedAt": user.updated_at,
-        "is_onboarding": not user.is_email_verified,
+        "is_onboarding": user.is_onboarding,
         "connectedUserIds": user.connected_user_ids or [],
         "followingUserIds": user.following_user_ids or [],
         "blockedUserIds": user.blocked_user_ids or [],
@@ -281,7 +282,8 @@ def public_user(user: User) -> dict:
     if user.profile_visibility == "private": raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Profile is private")
     return {
         "id": user.id,
-        "fullName": user.full_name,
+        "firstName": user.first_name,
+        "lastName": user.last_name,
         "profilePhotoUrl": user.profile_photo_url,
         "university": user.university,
         "major": user.major,
@@ -310,7 +312,8 @@ def get_user_or_404(db: Session, user_id: str) -> User:
 
 def apply_user_update(user: User, payload: UserUpdate) -> User:
     field_map = {
-        "fullName": "full_name",
+        "firstName": "first_name",
+        "lastName": "last_name",
         "profilePhotoUrl": "profile_photo_url",
         "bannerPhotoUrl": "banner_photo_url",
         "university": "university",
@@ -329,15 +332,11 @@ def apply_user_update(user: User, payload: UserUpdate) -> User:
     changes = payload.model_dump(exclude_unset=True)
     for public_name, value in changes.items():
         if public_name == "academicInterests":
-            user.academic_interests = [UserAcademicInterest(interest=interest) for interest in value]
+            user.academic_interests = value or []
             continue
         if public_name == "notificationPreferences":
             preferences = payload_dict(value)
-            if not user.notification_preferences:
-                user.notification_preferences = UserNotificationPreference()
-            user.notification_preferences.email = preferences["email"]
-            user.notification_preferences.push = preferences["push"]
-            user.notification_preferences.in_app = preferences["inApp"]
+            user.notification_preferences = preferences
             continue
         setattr(user, field_map[public_name], payload_dict(value))
     user.completeness_score = calculate_completeness(user)
@@ -359,6 +358,6 @@ def auth_payload(session: UserSession, user: User) -> dict:
     return {
         "accessToken": access_token,
         "refreshToken": session.refresh_token,
-        "is_onboarding": not user.is_email_verified,
+        # "is_onboarding": user.is_onboarding,
         "user": user_to_schema(user),
     }

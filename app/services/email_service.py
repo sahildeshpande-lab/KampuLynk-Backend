@@ -100,9 +100,42 @@ def _paragraphs(text: str) -> str:
     return "".join(f'<p style="margin:0 0 14px;">{escape(part)}</p>' for part in text.splitlines() if part.strip())
 
 
-def build_otp_email_html(otp: str) -> str:
-    body_html = _render_template("auth/otp_email.html", {"otp": otp})
-    return _render_email_layout("Email Verification", body_html)
+def _otp_template_details(otp_purpose: str) -> tuple[str, str, str]:
+    """
+    Returns (title, header, body, template_name) for OTP emails based on purpose.
+    """
+    match otp_purpose:
+        case "email_verification":
+            return (
+                "Email Verification",
+                "Email Verification",
+                "To verify your email use this one time OTP"
+            )
+        case "password_reset":
+            return (
+                "Temporary Password",
+                "Your Temporary Password",
+                "Use this as one-time password to set your password"
+            )
+        case _:
+            return (
+                "Email Verification",
+                "Email Verification",
+                "To verify your email use this one time OTP"
+            )
+
+
+def build_otp_email_html(otp: str, otp_purpose: str = "email_verification") -> str:
+    title, header, body_text = _otp_template_details(otp_purpose)
+    body_html = _render_template(
+        "auth/otp_email.html",
+        {
+            "otp": otp,
+            "header": header,
+            "body_text": body_text
+        }
+    )
+    return _render_email_layout(title, body_html)
 
 
 def _notification_template_name(notification_type: str) -> str:
@@ -148,8 +181,10 @@ def build_password_changed_email_html(full_name: str | None = None) -> str:
     return _render_email_layout("Password Changed Successfully", body_html)
 
 
-def send_otp_email(to_email: str, otp: str) -> bool:
-    return _send_email(to_email, "KampuLynk OTP Verification", build_otp_email_html(otp))
+def send_otp_email(to_email: str, otp: str, otp_purpose: str = "password_reset") -> bool:
+    title, _, _ = _otp_template_details(otp_purpose)
+    subject = f"KampuLynk {title}"
+    return _send_email(to_email, subject, build_otp_email_html(otp, otp_purpose))
 
 
 def send_account_created_email(to_email: str, full_name: str | None = None) -> bool:

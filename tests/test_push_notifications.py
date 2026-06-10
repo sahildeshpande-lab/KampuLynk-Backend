@@ -21,7 +21,7 @@ def _email(prefix: str) -> str:
 def _get_token(client, email: str | None = None, role: str = "user"):
     path = "/auth/signup" if role == "user" else "/auth/admin/signup"
     response = client.post(path, json={
-        "fullName": "Push Test User",
+        "firstName": "Push", "lastName": "Test User",
         "email": email or _email("push_user"),
         "password": "StrongPass123",
         "consentGiven": True,

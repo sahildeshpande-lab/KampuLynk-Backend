@@ -16,8 +16,8 @@ router = APIRouter(tags=[INVITATION_TAG])
 
 @router.get("/invitations/code", response_model=ApiResponse)
 def get_my_invitation_code(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    if not user.is_active:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="User is inactive")
+    if user.is_delete:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="User is deleted")
 
     invite_code = invitation_service.get_or_create_active_code(db, user.id)
 
@@ -41,8 +41,8 @@ def send_invitation(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    if not user.is_active:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="User is inactive")
+    if user.is_delete:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="User is deleted")
 
     invited_email = payload.email.strip().lower()
     if invited_email == user.email.strip().lower():
@@ -117,7 +117,7 @@ def validate_invitation_code(code: str, db: Session = Depends(get_db)):
             "isValid": True,
             "code": invite_code.code,
             "originatorUserId": invite_code.originator.id,
-            "originatorName": invite_code.originator.full_name,
+            "originatorName": f"{invite_code.originator.first_name} {invite_code.originator.last_name}",
         },
     )
 

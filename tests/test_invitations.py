@@ -13,7 +13,7 @@ def mock_emails(monkeypatch):
 
 def _signup_user(client, email: str, role: str = "user"):
     payload = {
-        "fullName": "Invite User",
+        "firstName": "Invite", "lastName": "User",
         "email": email,
         "password": "StrongPass123",
         "consentGiven": True,

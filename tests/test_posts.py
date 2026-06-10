@@ -15,7 +15,7 @@ def _signup(client, email="post.user@university.edu"):
     response = client.post(
         "/auth/signup",
         json={
-            "fullName": "Post User",
+            "firstName": "Post", "lastName": "User",
             "email": email,
             "password": "StrongPass123",
             "consentGiven": True,

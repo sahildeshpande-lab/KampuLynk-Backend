@@ -11,10 +11,14 @@ def mock_emails(monkeypatch):
 
 
 def _get_token(client, email, full_name="Test User", university=None, major=None, location=None, visibility="public"):
+    parts = full_name.split(" ", 1)
+    first_name = parts[0]
+    last_name = parts[1] if len(parts) > 1 else ""
     response = client.post(
         "/auth/signup",
         json={
-            "fullName": full_name,
+            "firstName": first_name,
+            "lastName": last_name,
             "email": email,
             "password": "StrongPass123",
             "consentGiven": True,
@@ -25,10 +29,18 @@ def _get_token(client, email, full_name="Test User", university=None, major=None
     )
     token = response.json()["data"]["accessToken"]
 
-    patch = {"profileVisibility": visibility}
+    if visibility:
+        client.patch(
+            "/users/me/visibility",
+            headers={"Authorization": f"Bearer {token}"},
+            json={"profileVisibility": visibility},
+        )
     if location:
-        patch["location"] = location
-    client.patch("/users/me", headers={"Authorization": f"Bearer {token}"}, json=patch)
+        client.patch(
+            "/users/me",
+            headers={"Authorization": f"Bearer {token}"},
+            json={"location": location},
+        )
 
     return token, response.json()["data"]["user"]["id"]
 
@@ -118,7 +130,7 @@ def test_search_username_support(client):
     _get_token(client, "alice_user123@test.com", full_name="Alice User")
     res = client.get("/discovery/users/search", params={"username": "alice_user123"})
     assert res.status_code == 200
-    assert any(item["fullName"] == "Alice User" for item in res.json()["data"]["items"])
+    assert any(item["firstName"] == "Alice" and item["lastName"] == "User" for item in res.json()["data"]["items"])
 
 
 def test_user_recommendations_requires_auth(client):

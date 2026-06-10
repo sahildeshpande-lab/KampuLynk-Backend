@@ -18,6 +18,9 @@ class UserDevice(Base):
     platform = Column(String(30), nullable=False)
     device_name = Column(String(150), nullable=True)
     is_active = Column(Boolean, default=True, nullable=False, index=True)
+    ip_address = Column(String(45), nullable=True)
+    last_accessed_ip = Column(String(45), nullable=True)
+    session_id = Column(String(36), ForeignKey('user_sessions.id', ondelete='SET NULL'), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(
         DateTime(timezone=True),
@@ -28,3 +31,4 @@ class UserDevice(Base):
     last_used_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     user = relationship("User", back_populates="devices")
+    session = relationship("UserSession", back_populates="devices")
