@@ -256,7 +256,7 @@ def resend_user_otp(db: Session, payload: ResendOTPRequest) -> dict:
     return {"email": user.email, "emailSent": sent}
 
 def expire_actives_otp(db:Session,user:User,purpose:str)->None :
-    db.query(EmailOTP).filter(EmailOTP.user_id==user.id,EmailOTP.purpose==purpose,EmailOTP.is_used==False,EmailOTP.is_expired==False).update({EmailOTP.is_expired==True},synchronize_session=True)
+    db.query(EmailOTP).filter(EmailOTP.user_id==user.id,EmailOTP.purpose==purpose,EmailOTP.is_used==False,EmailOTP.is_expired==False).update({EmailOTP.is_expired: True},synchronize_session=False)
     db.commit()
 
 def forgot_user_password(db: Session, payload: ForgotPasswordRequest) -> dict:
