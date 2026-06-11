@@ -198,9 +198,10 @@ def verify_user_otp(db: Session, payload: VerifyOTPRequest) -> dict:
     if not otp:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid OTP")
     if not otp_not_expired(otp):
+        db.commit()
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="OTP expired")
     otp.is_used = True
-    otp.is_expired = False
+    otp.is_expired = True
     user.is_email_verified = True
     user.email_verified_at = datetime.now(timezone.utc)
     db.commit()
@@ -319,8 +320,10 @@ def reset_user_password(db: Session, payload: ResetPasswordRequest) -> dict:
     if not otp:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid OTP")
     if not otp_not_expired(otp):
+        db.commit()
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="OTP expired")
     otp.is_used = True
+    otp.is_expired = True
     user.password_hash = hash_password(payload.newPassword)
     db.commit()
     return {"email": user.email}

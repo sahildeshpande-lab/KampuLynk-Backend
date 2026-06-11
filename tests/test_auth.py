@@ -258,3 +258,71 @@ def test_admin_signin(client):
     response = client.post("/auth/admin/signin", json={"email": email, "password": password})
     assert response.status_code == 200
     assert response.json()["data"]["user"]["role"] == "superadmin"
+
+def test_otp_is_expired_logic(client, monkeypatch):
+    from app.db.db import SessionLocal
+    from app.models.model import EmailOTP, User
+    
+    captured_otp = []
+    monkeypatch.setattr(main, "send_otp_email", lambda email, otp: captured_otp.append(otp))
+    
+    email = "otpexpiredtest@university.edu"
+    signup_res = client.post("/auth/signup", json={
+        "firstName": "Expired", "lastName": "User",
+        "email": email,
+        "password": "StrongPass123",
+        "consentGiven": True,
+        "university": "MIT",
+        "major": "CS",
+        "educationLevel": "bachelors"
+    })
+    assert signup_res.status_code == 201
+    
+    otp_code = captured_otp[0]
+    
+    # Verify DB state: is_used is False, is_expired is False
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.email == email).first()
+        assert user is not None
+        db_otp = db.query(EmailOTP).filter(EmailOTP.user_id == user.id, EmailOTP.code == otp_code).first()
+        assert db_otp is not None
+        assert db_otp.is_used is False
+        assert db_otp.is_expired is False
+        
+        # 1. Test verification sets is_used = True and is_expired = True
+        response = client.post("/auth/verify-otp", json={"email": email, "otp": otp_code})
+        assert response.status_code == 200
+        
+        db.refresh(db_otp)
+        assert db_otp.is_used is True
+        assert db_otp.is_expired is True
+        
+        # 2. Test expiration: Let's create a new OTP for password reset and make it old
+        from datetime import datetime, timezone, timedelta
+        reset_res = client.post("/auth/forgot-password", json={"email": email})
+        assert reset_res.status_code == 200
+        
+        # Get the new OTP from DB and set its created_at to 3 minutes ago
+        reset_otp = db.query(EmailOTP).filter(
+            EmailOTP.user_id == user.id,
+            EmailOTP.purpose == "password_reset",
+            EmailOTP.is_used == False
+        ).first()
+        assert reset_otp is not None
+        reset_otp.created_at = datetime.now(timezone.utc) - timedelta(minutes=3)
+        db.commit()
+        
+        # Try to reset password with it. It should fail and set is_expired to True in the database
+        pwd_res = client.post("/auth/reset-password", json={
+            "email": email,
+            "otp": reset_otp.code,
+            "newPassword": "NewStrongPass123"
+        })
+        assert pwd_res.status_code == 400
+        assert pwd_res.json()["message"] == "OTP expired"
+        
+        db.refresh(reset_otp)
+        assert reset_otp.is_expired is True
+    finally:
+        db.close()
